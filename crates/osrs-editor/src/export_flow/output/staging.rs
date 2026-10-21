@@ -49,6 +49,10 @@ impl Staging {
                 "Export destination must not overlap the original cache folder.".to_owned(),
             );
         }
+        Self::allocate(&parent)
+    }
+
+    fn allocate(parent: &Path) -> Result<Self, String> {
         static NEXT: AtomicU64 = AtomicU64::new(0);
         for _ in 0..100 {
             let dir = parent.join(format!(
@@ -115,4 +119,25 @@ pub(super) fn copy_cache(source: &Path, out: &Path) -> Result<(), String> {
         std::fs::copy(entry.path(), out.join(name)).map_err(|e| format!("Copying cache: {e}"))?;
     }
     Ok(())
+}
+
+/// Publish a fully synced new artifact atomically; an existing destination is never replaced.
+pub(crate) fn publish_new_file(out: &Path, bytes: &[u8]) -> Result<(), String> {
+    let parent = out
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."))
+        .canonicalize()
+        .map_err(|e| format!("Artifact destination: {e}"))?;
+    let destination = parent.join(
+        out.file_name()
+            .ok_or("Artifact destination has no file name")?,
+    );
+    let staging = Staging::allocate(&parent)?;
+    let staged = staging.path().join("artifact");
+    write_file(&staged, bytes)?;
+    // The sibling staging directory guarantees one filesystem. Linking publishes only complete
+    // bytes and fails on every existing destination; dropping staging retires the temporary link.
+    std::fs::hard_link(&staged, &destination)
+        .map_err(|e| format!("Publishing {}: {e}", destination.display()))
 }

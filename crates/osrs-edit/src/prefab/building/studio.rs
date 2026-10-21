@@ -67,6 +67,24 @@ pub fn capture_prefab_over(
         // Object edits can invalidate occurrence indices. Human labels and surviving human-confirmed
         // relations are remapped to the new occurrence order; derived relations are dropped.
         if p.objects != original.objects {
+            b.labels = b
+                .labels
+                .iter()
+                .filter_map(|(key, value)| {
+                    let Some(member_key) = key.strip_prefix("human:member:") else {
+                        return Some((key.clone(), value.clone()));
+                    };
+                    let Some((index, field)) = member_key.split_once(':') else {
+                        return Some((key.clone(), value.clone()));
+                    };
+                    let Ok(index) = index.parse::<usize>() else {
+                        return Some((key.clone(), value.clone()));
+                    };
+                    let old = original.objects.get(index)?;
+                    let new = p.objects.iter().position(|o| o == old)?;
+                    Some((format!("human:member:{new}:{field}"), value.clone()))
+                })
+                .collect();
             b.relations = b
                 .relations
                 .iter()

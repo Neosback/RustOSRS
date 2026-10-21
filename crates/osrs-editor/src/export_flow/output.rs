@@ -1,6 +1,7 @@
 //! Publish only fully prepared and independently reopened output.
 
 mod staging;
+pub(crate) use staging::publish_new_file;
 
 use super::prepare::verify_files;
 use super::*;

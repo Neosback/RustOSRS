@@ -58,11 +58,11 @@ Existing feature controllers (`PlaceState`, export, script, HD and asset service
 
 ## Temporary adapter: TerrainController
 
-`TerrainController` owns the existing terrain preview map, stored-height override markers, active brush stroke and chronological history **routing metadata**. Canonical committed before/after data lives exclusively in `EditorSession`.
+`TerrainController` owns the existing terrain preview map, stored-height override markers, active brush stroke and stroke seed/counter. It owns no completed chronology. Canonical committed before/after data lives exclusively in `EditorSession`.
 
 Its callers are the terrain/clipboard/history application adapters. Other features use lifecycle methods such as cancel/reset. Switching tools cancels and restores the active preview; it does not commit a second history entry or consume redo.
 
-Remove the adapter when world workers consume semantic snapshots directly and session history supplies sufficient projection footprints for every replay. Until then, preserve its exact source-height override and history-routing behavior; never use it as planner authority.
+Session history already supplies semantic replay footprints, and descriptor-driven replay has removed the routing stacks. Remove the remaining preview/projection adapter when workers consume semantic snapshots directly and source-height overrides have a proven replacement. Until then, preserve exact preview cancellation and source-height override behavior; never use it as planner authority.
 
 The small `app/paint_commit.rs`, `app/path_commit.rs`, and editor `heights.rs` modules retain existing application import paths while translating UI DTOs or re-exporting canonical domain types. They contain no duplicate semantic planner. Their removal condition is migration of remaining application imports to the canonical types; wire/project formats are unchanged.
 
@@ -79,6 +79,19 @@ of renderable admission; the UI never derives it from picker triangles or edits 
 The tile inspector's **Edit and rebuild trace** shows retained source-plane edit observations, semantic revision transitions, invalidation reasons and FIFO build identities/outcomes. The 256-event ring is enabled in debug builds; `RUSTOSRS_TRACE_EDITS=1` enables it explicitly and `=0` disables it. Release builds default to disabled and event construction is lazy. Source replacement clears retained observations.
 
 Build observations include source generation, request ID, semantic revision at scheduling, projection epoch and presentation generation. “Ticket accepted” records the FIFO freshness decision, not a claim that GPU presentation has completed. History-free source hydration and project-diff application are not interactive tool transactions and do not produce an interactive gesture event. Object tile observations describe placement anchors; invalidation events describe affected producer regions.
+
+## Projection lifecycle contracts
+
+[Active projection contracts](PROJECTION-CONTRACTS.md) inventory the scene/worker, render, picker,
+collision, proof, animation, actor and preview lifetimes. Visual caches may retain the last accepted
+picture while rebuilding; navigation may not trust stale collision evidence. Dirty work remains
+required until its current completion, and membership changes discard old in-flight animation output.
+Actor completions retire only their issued token/stamp and publish after the frame reconciles current
+settings and revisions. Hide revokes publication while the physical FIFO request drains.
+Current Empty/Failed region results use the same whole-region cleanup as semantic rejection, with
+unavailable residency suppressing retries. They preserve semantic documents and pending project work;
+stale terminal results cannot remove newer projections or overwrite notices.
+See the inventory for source identities, failure policies, regression tests and unresolved boundaries.
 
 ## Adding a feature
 
@@ -125,3 +138,26 @@ and geographic/family grouping. `lab/runner.rs` runs the existing Python demonst
 writes local task/actions/metrics artifacts and checks tool replay before exposing it to the UI.
 `script/lab.rs` restricts automation to host controls while the Lab owns edits; normal editor
 commands cannot write the Lab projection. Teacher data and fitted-policy claims stay distinct.
+
+## Authored snapshots
+
+[Authored snapshots](../specs/authored-snapshot.md) are a separate registered read-only operation on
+EditorSession's existing map/scenario/appearance composition. File → Save authored snapshot and
+`project snapshot PATH` freeze one bounded native export on ProjectRuntime. The headless
+`--verify-authored-snapshot FILE` checker validates all domain identities and a canonical round trip
+without installing into a live session. Current content is captured; source, availability, pending
+project restoration, history and clocks remain separate envelope inputs.
+
+## Building semantic reproduction
+
+The registered `buildings` operation also owns explicit frozen reproduction in
+[prefab_runtime/build/reproduction.rs](../../crates/osrs-editor/src/app/prefab_runtime/build/reproduction.rs).
+The native Build panel and `prefab reproduce PATH [failure=SEED]` capture an admitted candidate or
+current rejected attempt; a native
+`--reproduce-building FILE` branch runs the existing planner and EditRuntime before creating any UI.
+[The contract](../specs/building-reproduction.md) records full forms, kit, canonical footprint facts,
+signed map snapshot, source/build context and expected digests. This is semantic verification of
+successful candidates. [Rejected-attempt reproduction](../specs/building-failure-reproduction.md)
+uses a separate closed failure format and proves exact rejection with an unchanged map and zero
+operations. Each failed seed can be captured without replacing the selected success. Neither
+contract grants raw-patch automation, render reproduction or crash recovery.

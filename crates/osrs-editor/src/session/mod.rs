@@ -5,6 +5,8 @@
 
 mod appearance;
 mod appearance_support;
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) mod authored_snapshot;
 pub(crate) use appearance_support::validate_appearance_pack;
 #[cfg(test)]
 mod appearance_tests;
@@ -30,4 +32,4 @@ pub(crate) use project_file::{PROJECT_FORMAT, ProjectFile};
 pub(crate) use region_diff::baseline_document;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) use region_diff::{RegionDiff, diff_region};
-pub(crate) use region_ingest::adapt_region_map;
+pub(crate) use region_ingest::{RegionAdaptError, adapt_region_map};

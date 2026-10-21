@@ -76,6 +76,13 @@ pub(super) enum EditExecutionError<E> {
 }
 
 impl EditRuntime {
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(in crate::app) fn freeze_authored_snapshot(
+        &self,
+    ) -> crate::session::authored_snapshot::Frozen {
+        self.session.freeze_authored_snapshot()
+    }
+
     pub(super) fn set_diagnostics(&mut self, sink: DiagnosticSink) {
         self.diagnostics = sink;
     }

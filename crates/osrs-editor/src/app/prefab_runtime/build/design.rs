@@ -1,6 +1,7 @@
 //! Product generation modes select canonical stages, then validate the resulting full candidate.
 use super::*;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub(in crate::app) enum GenerationMode {
     #[default]
     Generate,
@@ -103,7 +104,7 @@ pub(super) fn validate(
     kit: &Kit,
     origin: MapTile,
     plane: SourcePlane,
-    size_of: &dyn Fn(ObjectId, LocKind) -> (u8, u8),
+    size_of: &dyn Fn(ObjectId, LocKind) -> Result<(u8, u8), String>,
 ) -> Result<osrs_lab::Verdict, String> {
     let mut candidate = document.clone();
     candidate
@@ -134,24 +135,22 @@ pub(super) fn validate(
         .objects
         .iter()
         .map(|p| {
-            let (w, h) = size_of(
+            let (w, h) = osrs_edit::try_object_footprint(
                 ObjectId::new(p.id),
-                LocKind::new(p.kind).unwrap_or_else(|| unreachable!()),
-            );
-            table.entry(ObjectId::new(p.id)).or_insert_with(|| {
-                osrs_scene::building_census::ObjectInfo {
-                    size: (w, h),
-                    ..Default::default()
-                }
-            });
-            let size = table[&ObjectId::new(p.id)].size;
-            osrs_lab::PaletteEntry {
+                LocKind::new(p.kind).ok_or_else(|| format!("Invalid candidate kind {}", p.kind))?,
+                0,
+                size_of,
+            )?;
+            // Kit object tables supply labels, not source definition dimensions.
+            let size = (w as u8, h as u8);
+            table.entry(ObjectId::new(p.id)).or_default().size = size;
+            Ok(osrs_lab::PaletteEntry {
                 id: p.id,
                 kind: p.kind,
                 size: [size.0, size.1],
-            }
+            })
         })
-        .collect();
+        .collect::<Result<_, String>>()?;
     let names = table
         .iter()
         .map(|(id, info)| (id.get(), info.name.clone()))

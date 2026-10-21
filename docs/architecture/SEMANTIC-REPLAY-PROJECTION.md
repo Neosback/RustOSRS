@@ -1,14 +1,15 @@
 # Semantic replay projection design
 
-Status: accepted design, partially implemented
+Status: accepted design, implemented through the CP2 stopping point on `main`.
 
-Current branch: `refactor/architecture-ai-foundation`
+Reconciled against `c4d2c5d235bedcedef7825249833b1ea6dbe9dbd` on 2026-10-19.
+See [AUTHORITY-AUDIT.md](AUTHORITY-AUDIT.md) for the current authority classification.
 
-## Problem
+## Resolved problem
 
-`EditorSession` owns the one authoritative semantic history, but `TerrainController` still keeps a second chronological `history` / `redo_stack` of routing markers. Those markers no longer contain authoritative before/after state, but they must stay aligned with `PatchHistory<EditorDocument>` so undo/redo can choose a worker/UI projection adapter.
-
-That duplicate chronology is now the remaining replay-architecture problem.
+The former `TerrainController.history` / `redo_stack` duplicated the chronology owned by
+`PatchHistory<EditorDocument>`. Those routing stacks and tool-shaped history markers are removed.
+The remaining controller owns preview/projection compatibility state only.
 
 ## Decision
 
@@ -183,49 +184,23 @@ Implemented and tested, including:
 
 `EditRuntime` also derives its replay diagnostic/touch footprint from the semantic descriptor.
 
-### R3B - wire descriptor into active undo/redo routing - NEXT
+### R3B - active descriptor-driven replay - COMPLETE
 
-The current active router still chooses tool-specific `Route` values from `EditStep` and uses tool-specific replay preparation. `EditRuntime::replay` still accepts an ignored compatibility footprint parameter.
+The active router reads `EditRuntime::replay_descriptor()`, uses the generic map replay projector,
+and handles Scenario/Appearance by descriptor kind. The ignored compatibility footprint argument
+is removed. Projection preparation uses post-replay authority before finalization and worker mutation.
 
-Next checkpoint:
+### R4A/R4B - duplicate chronology and obsolete routes - COMPLETE
 
-- capture replay input from `EditRuntime::replay_descriptor()`
-- use the generic map replay projector for Map descriptors
-- handle Scenario/Appearance directly from descriptor kind
-- remove the ignored compatibility replay-footprint argument
-- preserve notices and object reselection as non-authoritative UX behavior
-- preserve exact rollback and post-finalization-only worker mutation
+`TerrainController.history`, `redo_stack`, `EditStep`, `Semantic*History` payloads and tool-specific
+replay routing are removed. Undo/redo availability comes from `EditRuntime`. Helpers still used for
+live preview and commit reconciliation remain projection adapters, not chronology.
 
-Acceptance:
+### R5 - authority ratchets - COMPLETE
 
-- replay projection requirements come exclusively from the semantic descriptor
-- no tool-specific map replay planner is required
-- existing Paint/Height/Path/Object/composite replay behavior remains covered
-
-### R4A - remove duplicate chronological marker stacks
-
-After R3B is proven:
-
-- remove `TerrainController.history`
-- remove `TerrainController.redo_stack`
-- make undo/redo availability come from `EditRuntime`
-- remove `EditStep` and `Semantic*History` types when unreferenced
-
-User-facing labels may survive only as optional non-authoritative metadata if still justified. They must not require a second history stack.
-
-### R4B - remove obsolete tool-specific replay-only helpers
-
-Delete replay-specific Paint/Height/Path/Object projection code that has no remaining live-preview or commit-projection caller.
-
-Do not delete shared helpers still required for live gesture preview or commit reconciliation.
-
-### R5 - lower architecture debt and tighten guards
-
-- remove obsolete legacy/history baselines
-- add a cheap guard against reintroducing parallel application chronology
-- keep checkpoint lifecycle and session privacy enforcement
-- update authority/feature documentation
-- add reproducible architecture metrics where useful
+`check_authority.py` rejects escaped checkpoint lifecycle and reintroduced application history.
+The architecture guard and application-surface ratchet remain in force; removed allowances must not
+be restored. See [the technical audit](TECHNICAL-ARCHITECTURE-AUDIT.md) for subsequent projection work.
 
 ## Non-goals
 

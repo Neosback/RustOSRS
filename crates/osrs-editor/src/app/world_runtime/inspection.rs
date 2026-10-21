@@ -1,6 +1,6 @@
 //! CPU picking and outline projections for resident world regions. Selection belongs to
 //! `InteractionRuntime`; these caches are disposable and never answer semantic edit queries.
-use super::{RegionKey, WorldRuntime};
+use super::{RegionArtifactIdentity, RegionKey, WorldRuntime};
 use crate::pick::Infos;
 use osrs_core::coords::MapTile;
 use osrs_scene::collision::CollisionSnapshot;
@@ -10,10 +10,16 @@ use web_time::Instant;
 type OutlineKey = (RegionKey, usize);
 type Triangles = Arc<Vec<[[i32; 3]; 3]>>;
 
+/// Exact rounded actor ground input and the accepted producer it was read from.
+pub(in crate::app) struct ActorGroundSample<'a> {
+    pub(in crate::app) height: i32,
+    pub(in crate::app) identity: &'a Arc<RegionArtifactIdentity>,
+}
+
 #[derive(Default)]
 pub(super) struct InspectionProjection {
     infos: Infos,
-    info_epochs: HashMap<RegionKey, u64>,
+    identities: HashMap<RegionKey, Arc<RegionArtifactIdentity>>,
     version: u64,
     outlines: HashMap<OutlineKey, Triangles>,
     /// The floor definitions the terrain builder reads, for appearance previews.
@@ -46,6 +52,22 @@ fn collision_view(
 }
 
 impl WorldRuntime {
+    pub(in crate::app) fn actor_ground_sample(
+        &self,
+        position: (i32, i32),
+        plane: u8,
+    ) -> Option<ActorGroundSample<'_>> {
+        let tile = MapTile::new(position.0.div_euclid(128), position.1.div_euclid(128));
+        let region = tile.split_region().0;
+        let key = (region.x, region.y);
+        let info = self.inspection.infos.get(&key)?;
+        let height = info.height_at(usize::from(plane), position.0 as f32, position.1 as f32)?;
+        Some(ActorGroundSample {
+            height: height.round() as i32,
+            identity: self.inspection.identities.get(&key)?,
+        })
+    }
+
     pub(in crate::app) fn request_outline(
         &self,
         identity: osrs_world::OutlineIdentity,
@@ -72,12 +94,18 @@ impl WorldRuntime {
     pub(in crate::app) fn collision_inspection(&self, tile: MapTile) -> CollisionInspection<'_> {
         let region = tile.split_region().0;
         let key = (region.x, region.y);
+        let identity = self.inspection.identities.get(&key);
+        let matching_inputs = identity.is_some_and(|identity| {
+            identity.source_generation() == self.builds.source_generation()
+                && identity.presentation_generation() == self.presentation_generation
+        });
         collision_view(
             self.inspection
                 .infos
                 .get(&key)
+                .filter(|_| matching_inputs)
                 .map(|info| info.collision.as_ref()),
-            self.inspection.info_epochs.get(&key).copied(),
+            identity.map(|identity| identity.projection_epoch()),
             self.builds.projection_epoch(key),
             self.dirty_regions.contains(&key)
                 || self.dirty_zones.contains_key(&key)
@@ -97,10 +125,30 @@ impl WorldRuntime {
     pub(in crate::app) fn floors(&self) -> Option<&Arc<FloorTable>> {
         self.inspection.floors.as_ref()
     }
-    pub(in crate::app) fn install_info(&mut self, key: RegionKey, info: Arc<RegionInfo>) {
+    pub(in crate::app) fn info_identity(&self, tile: MapTile) -> Option<&RegionArtifactIdentity> {
+        let region = tile.split_region().0;
         self.inspection
-            .info_epochs
-            .insert(key, self.builds.projection_epoch(key));
+            .identities
+            .get(&(region.x, region.y))
+            .map(AsRef::as_ref)
+    }
+    /// Current worker-source metadata, distinct from the project's independent generation counter.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(in crate::app) fn source_target(
+        &self,
+        tile: MapTile,
+    ) -> Option<&osrs_core::provenance::TargetProvenance> {
+        self.info_identity(tile)?
+            .target_for_source(self.builds.source_generation())
+    }
+    pub(super) fn install_info(
+        &mut self,
+        identity: Arc<RegionArtifactIdentity>,
+        info: Arc<RegionInfo>,
+    ) {
+        let region = identity.region();
+        let key = (region.x, region.y);
+        self.inspection.identities.insert(key, identity);
         self.inspection
             .outlines
             .retain(|(region, _), _| *region != key);
@@ -118,12 +166,12 @@ impl WorldRuntime {
             .requested
             .retain(|(region, _), _| *region != key);
         self.inspection.infos.remove(&key);
-        self.inspection.info_epochs.remove(&key);
+        self.inspection.identities.remove(&key);
         self.inspection.version += 1;
     }
     pub(in crate::app) fn clear_inspection(&mut self) {
         self.inspection.infos.clear();
-        self.inspection.info_epochs.clear();
+        self.inspection.identities.clear();
         self.inspection.version += 1;
         self.clear_outlines();
     }
@@ -238,6 +286,26 @@ mod tests {
                 .accept_outline(key, current, 1, 2, vec![])
                 .is_none()
         );
+    }
+
+    #[test]
+    fn rejection_clears_cached_and_in_flight_outlines() {
+        use crate::app::world_runtime::test_support::{KEY, world};
+        let mut world = world();
+        let identity = osrs_world::OutlineIdentity {
+            source_generation: world.builds.source_generation(),
+            projection_epoch: world.builds.projection_epoch(KEY),
+            request_id: 1,
+        };
+        world.inspection.outlines.insert((KEY, 0), Arc::new(vec![]));
+        world
+            .inspection
+            .requested
+            .insert((KEY, 1), (identity, Instant::now()));
+        world.region_unavailable(KEY);
+        assert!(world.outline(&(KEY, 0)).is_none());
+        assert!(world.install_outline((KEY, 1), identity, vec![]).is_none());
+        assert!(world.outline(&(KEY, 1)).is_none());
     }
 
     #[test]

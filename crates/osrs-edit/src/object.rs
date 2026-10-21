@@ -19,6 +19,12 @@ impl LocKind {
     pub const fn get(self) -> u8 {
         self.0
     }
+
+    /// Only scenery kinds 10/11 use the definition footprint; other stored loc kinds occupy one
+    /// tile even when their definition advertises a larger model footprint.
+    pub const fn uses_definition_footprint(self) -> bool {
+        matches!(self.0, 10 | 11)
+    }
 }
 
 /// Valid cardinal object orientation (`0..=3`).
@@ -48,6 +54,18 @@ pub struct ObjectPlacement {
     pub position: MapPosition,
     pub kind: LocKind,
     pub orientation: ObjectOrientation,
+}
+
+impl ObjectPlacement {
+    /// Existing canonical document order, shared by deterministic spatial query projections.
+    pub(crate) fn document_key(&self) -> (MapPosition, u8, u32, u8) {
+        (
+            self.position,
+            self.kind.get(),
+            self.object_id.get(),
+            self.orientation.get(),
+        )
+    }
 }
 
 #[cfg(test)]

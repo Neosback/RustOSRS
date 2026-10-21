@@ -3,7 +3,7 @@ schema_version: 1
 owned_specs:
   - NORMALS-001
 parity_level: P1
-execution: evidence_only
+execution: semantic
 oracle:
   kind: melxin-deob-source
   repository: melxin/runelite
@@ -22,4 +22,4 @@ normalization:
   - preserve signed integer model coordinates and face winding
   - preserve absent face render types as null
   - preserve exact integer normal components and magnitude counts
-notes: Source-pinned base smooth-normal evidence. Production normal generation belongs to M7.
+notes: Source-pinned base smooth-normal evidence. Executed by the canonical production-backed normal fixture runner.

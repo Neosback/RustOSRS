@@ -1,7 +1,8 @@
 //! Planning a prefab back into a map: turn it, move it, and compare with what is there.
 
 use super::{
-    Prefab, PrefabError, footprint, objects_overlapping_rect, overlay_of, placement_of, plane_at,
+    Prefab, PrefabError, overlay_of, placement_of, plane_at, try_object_footprint,
+    try_objects_overlapping_rect,
 };
 use crate::{HeightVertexCoord, LocKind, MapDocument, MapOp, MapPatch, MapPosition, TerrainTile};
 use osrs_core::{
@@ -45,7 +46,18 @@ pub fn plan_place_prefab(
     spec: PlaceSpec,
     size_of: &dyn Fn(ObjectId, LocKind) -> (u8, u8),
 ) -> Result<PlacedPrefab, PrefabError> {
-    let placed = plan_place_exact(document, prefab, spec, size_of)?;
+    try_plan_place_prefab(document, prefab, spec, &|id, kind| Ok(size_of(id, kind)))
+}
+
+/// Fit and validate using fallible definition dimensions. Missing required dimensions reject the
+/// entire plan; this shares all placement and foundation rules with `plan_place_prefab`.
+pub fn try_plan_place_prefab(
+    document: &MapDocument,
+    prefab: &Prefab,
+    spec: PlaceSpec,
+    size_of: &dyn Fn(ObjectId, LocKind) -> Result<(u8, u8), PrefabError>,
+) -> Result<PlacedPrefab, PrefabError> {
+    let placed = try_plan_place_exact(document, prefab, spec, size_of)?;
     let placed = if prefab.building.is_some() && spec.heights {
         super::foundation::fit(document, prefab, spec, placed)?
     } else {
@@ -106,6 +118,16 @@ pub fn plan_place_exact(
     prefab: &Prefab,
     spec: PlaceSpec,
     size_of: &dyn Fn(ObjectId, LocKind) -> (u8, u8),
+) -> Result<PlacedPrefab, PrefabError> {
+    try_plan_place_exact(document, prefab, spec, &|id, kind| Ok(size_of(id, kind)))
+}
+
+/// Exact placement with fallible dimensions, preserving the same rotation/removal rules.
+pub fn try_plan_place_exact(
+    document: &MapDocument,
+    prefab: &Prefab,
+    spec: PlaceSpec,
+    size_of: &dyn Fn(ObjectId, LocKind) -> Result<(u8, u8), PrefabError>,
 ) -> Result<PlacedPrefab, PrefabError> {
     prefab.validate()?;
     if plane_at(spec.base_plane, prefab.planes - 1).is_none() {
@@ -174,7 +196,7 @@ pub fn plan_place_exact(
         let mut removing = HashSet::new();
         if spec.replace_objects {
             for offset in 0..prefab.planes {
-                for placement in objects_overlapping_rect(
+                for placement in try_objects_overlapping_rect(
                     document,
                     (spec.origin.x, spec.origin.y),
                     (
@@ -183,14 +205,14 @@ pub fn plan_place_exact(
                     ),
                     plane(offset),
                     size_of,
-                ) {
+                )? {
                     if let Some(building) = &prefab.building {
-                        let (w, h) = footprint(
+                        let (w, h) = try_object_footprint(
                             placement.object_id,
-                            placement.kind.get(),
+                            placement.kind,
                             placement.orientation.get(),
                             size_of,
-                        );
+                        )?;
                         if !building
                             .floors
                             .iter()
@@ -232,9 +254,13 @@ pub fn plan_place_exact(
             let (mut x, mut y) = (i32::from(object.x), i32::from(object.y));
             let (mut w, mut h) = (i32::from(prefab.width), i32::from(prefab.height));
             let mut orientation = object.orientation;
+            let kind = LocKind::new(object.kind).ok_or(PrefabError::BadValue {
+                what: "object kind",
+                value: u32::from(object.kind),
+            })?;
             for _ in 0..turns {
                 let (fw, _) =
-                    footprint(ObjectId::new(object.id), object.kind, orientation, size_of);
+                    try_object_footprint(ObjectId::new(object.id), kind, orientation, size_of)?;
                 // The anchor is the footprint's south-west tile; the turned footprint's is
                 // `w - fw - x` up from the bottom (one tile footprints give `w - 1 - x`).
                 (x, y) = (y, w - fw - x);

@@ -3,7 +3,9 @@
 use super::{PathExtent, Preview};
 use crate::terrain_path::{self, FittedTile};
 #[cfg(not(target_arch = "wasm32"))]
-use eframe::egui;
+mod worker;
+#[cfg(not(target_arch = "wasm32"))]
+pub(super) use worker::PlanWorker;
 
 const FNV_OFFSET: u64 = 0xCBF2_9CE4_8422_2325;
 const FNV_PRIME: u64 = 0x0100_0000_01B3;
@@ -126,6 +128,7 @@ pub(super) fn plan_key(
 }
 
 /// Everything a fit is made from, copied off the editor so another thread can make it.
+#[derive(Debug)]
 pub(super) struct PlanInput {
     pub(super) key: u64,
     pub(super) points: Vec<(f32, f32)>,
@@ -143,66 +146,6 @@ impl PlanInput {
             overlay_id: self.overlay_id,
             paints,
             line,
-        }
-    }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-#[derive(Debug)]
-pub(super) struct PlanWorker {
-    request: std::sync::mpsc::Sender<PlanInput>,
-    pub(super) result: std::sync::mpsc::Receiver<Preview>,
-    requested: u64,
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-impl PlanWorker {
-    /// A short quiet period prevents expensive plans for every pointer sample.
-    const DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(24);
-
-    pub(super) fn new(first: PlanInput, repaint: Option<egui::Context>) -> Self {
-        let requested = first.key;
-        let (request, requests) = std::sync::mpsc::channel::<PlanInput>();
-        let (results, result) = std::sync::mpsc::channel::<Preview>();
-        let _ = request.send(first);
-        std::thread::spawn(move || {
-            while let Ok(mut input) = requests.recv() {
-                // Wait briefly for the pointer to settle, always replacing the pending input with
-                // the newest one. Only one plan is ever running at a time.
-                loop {
-                    match requests.recv_timeout(Self::DEBOUNCE) {
-                        Ok(newer) => input = newer,
-                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => break,
-                        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
-                    }
-                }
-                if results.send(input.make()).is_err() {
-                    return;
-                }
-                if let Some(ctx) = &repaint {
-                    ctx.request_repaint();
-                }
-            }
-        });
-        Self {
-            request,
-            result,
-            requested,
-        }
-    }
-
-    /// Ask for a plan; hands the input back when the worker is gone.
-    pub(super) fn request(&mut self, input: PlanInput) -> Option<PlanInput> {
-        if input.key == self.requested {
-            return None;
-        }
-        let key = input.key;
-        match self.request.send(input) {
-            Ok(()) => {
-                self.requested = key;
-                None
-            }
-            Err(error) => Some(error.0),
         }
     }
 }

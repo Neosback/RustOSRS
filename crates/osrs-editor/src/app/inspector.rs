@@ -139,8 +139,19 @@ impl EditorApp {
             );
             return;
         };
-        self.diagnostics
-            .tile_inspector(ui, tile, self.interaction.view_plane());
+        let map_tile = osrs_core::coords::MapTile::new(tile.0, tile.1);
+        self.diagnostics.tile_inspector(
+            ui,
+            tile,
+            self.interaction.view_plane(),
+            crate::app::diagnostics::ProjectionInspection {
+                static_zone: self.renderer.static_identity(map_tile),
+                picker: self.world.info_identity(map_tile),
+                animation: self.renderer.animation_identity(),
+                npcs: self.renderer.npc_identity(),
+                player: self.renderer.player_identity(),
+            },
+        );
         let selected_tiles = self.interaction.selection_tiles().len();
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new(format!("{}, {}", tile.0, tile.1)).heading());

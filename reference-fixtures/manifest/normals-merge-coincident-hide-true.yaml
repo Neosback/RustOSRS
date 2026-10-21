@@ -3,7 +3,7 @@ schema_version: 1
 owned_specs:
   - NORMALS-002
 parity_level: P1
-execution: evidence_only
+execution: semantic
 oracle:
   kind: melxin-deob-source
   repository: melxin/runelite
@@ -22,4 +22,4 @@ normalization:
   - preserve separate left and right model identity
   - preserve exact integer translation and vertex order
   - preserve matched-face render type 2 without postprocessing
-notes: Source-pinned coincident normal-merge hiding control. Production cross-model normal merging belongs to M7.
+notes: Source-pinned coincident normal-merge hiding control. Executed by the canonical production-backed normal fixture runner.

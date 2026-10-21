@@ -18,6 +18,7 @@ use osrs_core::{
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, fmt};
 
+mod assembly;
 mod building;
 mod capture;
 mod foundation;
@@ -30,7 +31,7 @@ pub use capture::{capture_prefab, prefab_from_patch};
 
 pub use place::{
     PlaceSpec, PlacedPrefab, plan_place_exact, plan_place_prefab, prefab_placement_origin,
-    turned_size,
+    try_plan_place_exact, try_plan_place_prefab, turned_size,
 };
 
 #[cfg(test)]
@@ -146,6 +147,14 @@ pub enum PrefabError {
         planes: u8,
     },
     Nothing,
+    NoReviewedAssembly {
+        member: usize,
+    },
+    /// A definition-sized scenery footprint is unavailable to the planning caller.
+    MissingFootprint {
+        object: ObjectId,
+        kind: LocKind,
+    },
     Patch(PatchApplyError),
     Building(BuildingPrefabError),
 }
@@ -153,6 +162,9 @@ pub enum PrefabError {
 impl fmt::Display for PrefabError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::NoReviewedAssembly { member } => {
+                write!(f, "piece {member} is not in a reviewed assembly")
+            }
             Self::Format(found) => write!(f, "not a prefab file (format {found:?})"),
             Self::Version(version) => write!(f, "prefab version {version} is not supported"),
             Self::EmptyName => write!(f, "a prefab needs a name"),
@@ -174,6 +186,12 @@ impl fmt::Display for PrefabError {
             Self::PlaneOverflow { base, planes } => {
                 write!(f, "{planes} planes do not fit above plane {base}")
             }
+            Self::MissingFootprint { object, kind } => write!(
+                f,
+                "dimensions unavailable for object {} (kind {}); load its source definitions or provide captured dimensions",
+                object.get(),
+                kind.get()
+            ),
             Self::Nothing => write!(f, "there is nothing to put in the prefab"),
             Self::Building(error) => write!(f, "building: {error}"),
             Self::Patch(error) => write!(f, "the placement does not apply: {error:?}"),
@@ -301,6 +319,7 @@ pub struct CaptureSpec {
 }
 
 /// Every placement stored on a tile of `[min.0, max.0) x [min.1, max.1)` on `plane`.
+/// Results use the same canonical placement order as MapDocument::object_entries.
 pub fn objects_in_rect(
     document: &MapDocument,
     min: (i32, i32),
@@ -326,6 +345,8 @@ pub fn objects_in_rect(
             }
         }
     }
+    // Region storage is a HashSet; its iteration order must not become patch/capture order.
+    found.sort_unstable_by_key(ObjectPlacement::document_key);
     found
 }
 
@@ -336,17 +357,36 @@ pub(crate) fn footprint(
     orientation: u8,
     size_of: &dyn Fn(ObjectId, LocKind) -> (u8, u8),
 ) -> (i32, i32) {
+    let Some(kind) = LocKind::new(kind) else {
+        return (1, 1);
+    };
+    match try_object_footprint(id, kind, orientation, &|id, kind| {
+        Ok::<_, std::convert::Infallible>(size_of(id, kind))
+    }) {
+        Ok(size) => size,
+        Err(never) => match never {},
+    }
+}
+
+/// Canonical footprint with fallible definition resolution. Unknown scenery dimensions must not
+/// become a one-tile guess; structural one-tile kinds never call the resolver.
+pub fn try_object_footprint<E>(
+    id: ObjectId,
+    kind: LocKind,
+    orientation: u8,
+    size_of: &dyn Fn(ObjectId, LocKind) -> Result<(u8, u8), E>,
+) -> Result<(i32, i32), E> {
     // Boundary pieces, wall decorations, diagonal walls and ground decoration take one tile
     // whatever the definition's size says.
-    if !matches!(kind, 10 | 11) {
-        return (1, 1);
+    if !kind.uses_definition_footprint() {
+        return Ok((1, 1));
     }
-    let (sx, sy) = LocKind::new(kind).map_or((1, 1), |kind| size_of(id, kind));
+    let (sx, sy) = size_of(id, kind)?;
     let (sx, sy) = (i32::from(sx.max(1)), i32::from(sy.max(1)));
     if orientation & 1 == 1 {
-        (sy, sx)
+        Ok((sy, sx))
     } else {
-        (sx, sy)
+        Ok((sx, sy))
     }
 }
 
@@ -359,16 +399,34 @@ pub fn objects_overlapping_rect(
     plane: SourcePlane,
     size_of: &dyn Fn(ObjectId, LocKind) -> (u8, u8),
 ) -> Vec<ObjectPlacement> {
+    match try_objects_overlapping_rect(document, min, max, plane, &|id, kind| {
+        Ok::<_, std::convert::Infallible>(size_of(id, kind))
+    }) {
+        Ok(objects) => objects,
+        Err(never) => match never {},
+    }
+}
+
+/// The same canonical eight-tile anchor halo and orientation rules, failing on unresolved sizes
+/// anywhere in that conservative search area (even if the object might ultimately not overlap).
+pub fn try_objects_overlapping_rect<E>(
+    document: &MapDocument,
+    min: (i32, i32),
+    max: (i32, i32),
+    plane: SourcePlane,
+    size_of: &dyn Fn(ObjectId, LocKind) -> Result<(u8, u8), E>,
+) -> Result<Vec<ObjectPlacement>, E> {
     /// No object is wider than this many tiles, so none stored further away can reach in.
     const REACH: i32 = 8;
-    objects_in_rect(document, (min.0 - REACH, min.1 - REACH), max, plane)
-        .into_iter()
-        .filter(|p| {
-            let (w, h) = footprint(p.object_id, p.kind.get(), p.orientation.get(), size_of);
-            let tile = p.position.tile;
-            tile.x < max.0 && tile.x + w > min.0 && tile.y < max.1 && tile.y + h > min.1
-        })
-        .collect()
+    let mut found = Vec::new();
+    for p in objects_in_rect(document, (min.0 - REACH, min.1 - REACH), max, plane) {
+        let (w, h) = try_object_footprint(p.object_id, p.kind, p.orientation.get(), size_of)?;
+        let tile = p.position.tile;
+        if tile.x < max.0 && tile.x + w > min.0 && tile.y < max.1 && tile.y + h > min.1 {
+            found.push(p);
+        }
+    }
+    Ok(found)
 }
 
 pub(crate) fn plane_at(base: SourcePlane, offset: u8) -> Option<SourcePlane> {

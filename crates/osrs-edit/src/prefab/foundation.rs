@@ -202,7 +202,7 @@ pub(super) fn fit(
 pub(super) fn validate_conflicts(
     document: &MapDocument,
     patch: &MapPatch,
-    size_of: &dyn Fn(ObjectId, LocKind) -> (u8, u8),
+    size_of: &dyn Fn(ObjectId, LocKind) -> Result<(u8, u8), PrefabError>,
 ) -> Result<(), PrefabError> {
     let removed: std::collections::HashSet<_> = patch
         .ops()
@@ -219,32 +219,39 @@ pub(super) fn validate_conflicts(
             MapOp::AddObject { placement } => Some(*placement),
             _ => None,
         })
-        .collect();
+        .map(|placement| {
+            let size = super::try_object_footprint(
+                placement.object_id,
+                placement.kind,
+                placement.orientation.get(),
+                size_of,
+            )?;
+            Ok((placement, size))
+        })
+        .collect::<Result<_, PrefabError>>()?;
     for existing in document.object_entries() {
         if removed.contains(&existing) {
             continue;
         }
-        let (w, h) = super::footprint(
+        let (w, h) = super::try_object_footprint(
             existing.object_id,
-            existing.kind.get(),
+            existing.kind,
             existing.orientation.get(),
             size_of,
-        );
+        )?;
         let t = existing.position.tile;
         let touches_height=patch.ops().iter().any(|op|matches!(op,MapOp::SetHeight{coord,..} if coord.plane==existing.position.plane && (t.x..=t.x+w).contains(&coord.corner.x) && (t.y..=t.y+h).contains(&coord.corner.y)));
-        let overlaps = added.iter().any(|new| {
+        let mut overlaps = false;
+        for (new, (nw, nh)) in &added {
             if new.position.plane != existing.position.plane {
-                return false;
+                continue;
             }
-            let (nw, nh) = super::footprint(
-                new.object_id,
-                new.kind.get(),
-                new.orientation.get(),
-                size_of,
-            );
             let n = new.position.tile;
-            t.x < n.x + nw && n.x < t.x + w && t.y < n.y + nh && n.y < t.y + h
-        });
+            if t.x < n.x + nw && n.x < t.x + w && t.y < n.y + nh && n.y < t.y + h {
+                overlaps = true;
+                break;
+            }
+        }
         if touches_height || overlaps {
             return Err(PrefabError::Building(BuildingPrefabError::Occupied(
                 existing,

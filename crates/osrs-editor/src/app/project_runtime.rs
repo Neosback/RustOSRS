@@ -15,6 +15,9 @@ pub(super) struct ProjectRuntime {
     error: Option<String>,
     #[cfg(not(target_arch = "wasm32"))]
     persistence: native::ProjectPersistence,
+    /// Explicit frozen exports outlive source/project replacement and never mark project edits saved.
+    #[cfg(not(target_arch = "wasm32"))]
+    snapshot: Option<native::SnapshotJob>,
 }
 impl Default for ProjectRuntime {
     fn default() -> Self {
@@ -31,6 +34,8 @@ impl ProjectRuntime {
             error,
             #[cfg(not(target_arch = "wasm32"))]
             persistence: native::ProjectPersistence::default(),
+            #[cfg(not(target_arch = "wasm32"))]
+            snapshot: None,
         }
     }
     #[cfg(not(target_arch = "wasm32"))]

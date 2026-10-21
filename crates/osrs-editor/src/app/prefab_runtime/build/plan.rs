@@ -1,26 +1,32 @@
 //! One candidate plans against a frozen document and passes shared semantic validation.
 use super::*;
+mod error;
+pub(super) use error::{Failure, Stage};
 
 pub(super) fn plan(
+    input: Arc<PreviewInput>,
     form: &BuildForm,
     kit: &Kit,
     document: &MapDocument,
-    origin: MapTile,
-    base_plane: SourcePlane,
-    size_of: &dyn Fn(ObjectId, LocKind) -> (u8, u8),
-) -> Result<Preview, String> {
+) -> Result<Preview, Failure> {
+    let size_of = |id, kind| input.footprints.resolve(id, kind);
+    let origin = input.origin;
+    let base_plane = input.plane;
     if form.mode != GenerationMode::Generate && form.sketch.is_none() {
-        return Err(
-            "Use a drawn room layout before completing, furnishing, restyling or repairing".into(),
-        );
+        return Err(Failure::request(
+            "Use a drawn room layout before completing, furnishing, restyling or repairing",
+        ));
     }
     if form.mode == GenerationMode::Repair && form.region.is_none() {
-        return Err("Select a repair area first".into());
+        return Err(Failure::request("Select a repair area first"));
     }
     if form.stage.is_some() && form.sketch.is_none() {
-        return Err("Keep a drawn room layout before rerolling a single stage".into());
+        return Err(Failure::request(
+            "Keep a drawn room layout before rerolling a single stage",
+        ));
     }
-    let site = RectSite::new(origin, form.width, form.height).ok_or("the site is empty")?;
+    let site = RectSite::new(origin, form.width, form.height)
+        .ok_or_else(|| Failure::request("the site is empty"))?;
     let request = BuildingRequest {
         seed: form.seed,
         site,
@@ -35,7 +41,7 @@ pub(super) fn plan(
         Some(sketch) => kit.kit.generate_in_rooms(&snapshot, form.variation, sketch),
         None => kit.kit.generate(&snapshot, form.variation),
     }
-    .map_err(|error| describe(&error))?;
+    .map_err(|error| Failure::new(Stage::Generation, describe(&error), format!("{error:?}")))?;
     let building = design::filter_generated(&generated, form, &kit.kit, document);
     let mut ops = Vec::new();
     let mut removed = 0;
@@ -45,7 +51,7 @@ pub(super) fn plan(
             let Some(plane) = SourcePlane::new(base.saturating_add(offset)) else {
                 continue;
             };
-            for placement in osrs_edit::objects_overlapping_rect(
+            for placement in osrs_edit::try_objects_overlapping_rect(
                 document,
                 (origin.x, origin.y),
                 (
@@ -53,8 +59,10 @@ pub(super) fn plan(
                     origin.y + i32::from(form.height),
                 ),
                 plane,
-                size_of,
-            ) {
+                &size_of,
+            )
+            .map_err(|message| Failure::new(Stage::Clearing, message.clone(), message))?
+            {
                 if form.locks.contains(&placement)
                     || !design::includes(&MapOp::RemoveObject { placement }, form, &kit.kit)
                 {
@@ -92,12 +100,14 @@ pub(super) fn plan(
         .count();
     let apply = MapPatch::new(ops);
     document.validate_patch(&apply).map_err(|error| {
-        format!(
+        let message = format!(
             "the building does not fit the map: {}",
             describe_apply(&error)
-        )
+        );
+        Failure::new(Stage::MapValidation, message, format!("{error:?}"))
     })?;
-    let verdict = design::validate(document, &apply, form, kit, origin, base_plane, size_of)?;
+    let verdict = design::validate(document, &apply, form, kit, origin, base_plane, &size_of)
+        .map_err(|message| Failure::new(Stage::CandidateValidation, message.clone(), message))?;
     let thumbnail = prefab_from_patch(
         &building,
         origin,
@@ -112,8 +122,9 @@ pub(super) fn plan(
             floors: form.floors,
         },
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| Failure::new(Stage::Thumbnail, e.to_string(), format!("{e:?}")))?;
     Ok(Preview {
+        input,
         origin,
         base_plane,
         form: form.clone(),

@@ -43,18 +43,6 @@ impl ObjectHistoryRoute {
     pub(in crate::app) fn new(removed: Vec<LocSpec>, added: Vec<LocSpec>) -> Self {
         Self { removed, added }
     }
-
-    pub(in crate::app) fn object_count(&self) -> usize {
-        self.removed.len().max(self.added.len())
-    }
-
-    pub(in crate::app) fn removed(&self) -> &[LocSpec] {
-        &self.removed
-    }
-
-    pub(in crate::app) fn added(&self) -> &[LocSpec] {
-        &self.added
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

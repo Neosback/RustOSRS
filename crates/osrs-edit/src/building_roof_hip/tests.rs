@@ -5,10 +5,7 @@ fn plane() -> SourcePlane {
     SourcePlane::new(1).unwrap_or_else(|| unreachable!("plane one is valid"))
 }
 
-const ASSETS: HipRoofAssets = HipRoofAssets {
-    slope: ObjectId::new(1924),
-    edge: ObjectId::new(1790),
-};
+const ASSETS: HipRoofAssets = HipRoofAssets::new(ObjectId::new(1924), ObjectId::new(1790));
 
 /// `(x, y) -> (object, kind, orientation)` for a footprint.
 fn roof_of(tiles: &[(i32, i32)]) -> BTreeMap<(i32, i32), (u32, u8, u8)> {

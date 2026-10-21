@@ -1,8 +1,80 @@
 # Procgen learning: what WFC cannot see, and the labelled data to teach it
 
+## Accepted implementation sequence — 2026-10-20
+
+The product target is local/offline cache learning followed by reviewed kits, deterministic
+multi-room/multi-floor building generation, terrain and modular-object autotiling, validated
+preview and one reversible commit. Both multiple models within one definition and multiple
+placements composing one semantic assembly are in scope. Inferred suggestions remain separate
+from reviewed generation data. Broad cache discovery is not universal generation certification.
+
+1. Establish correctness at existing owners: reproduce occupied scene-slot failures; propagate
+   vertical failures; replace generator-owned stair IDs with explicit kit assets; preserve room
+   role intent. Do not weaken placement validation.
+2. Extend catalogue evidence and reviewed prefab relationships with model composition, assembly
+   membership, relative transforms, footprints/clearance, anchors, style and provenance. Preserve
+   the canonical model-selection rules; typed alternative models are not automatically an assembly.
+3. Connect census/review/training/generator role vocabularies. Build distinct per-floor room graphs,
+   paired stairs, landings, openings and support before furnishing. Bind learned patterns to reviewed
+   structural assets/assemblies; keep global connectivity outside WFC.
+4. Extend canonical terrain-shape fitting and modular edge/socket rules for transitions, corners,
+   junctions, fences and roofs. Unknown boundaries remain incomplete evidence.
+5. Integrate review/correction and per-room/portal/assembly diagnostics into Studio. Preserve bounded
+   workers, stale-result rejection, cancellation, exact undo/redo and reproduction.
+6. Certify reviewed house/shop/tavern families using held-out geographic/authored-family groups.
+   Run 1,000 fixed supported-site requests per family across supported floor counts; target at
+   least 90% valid-candidate yield and zero invalid accepted candidates. Report detection precision,
+   recall, confusion and abstention against independent human labels; weak labels are not truth.
+   Review a fixed generated gallery for appearance and furnishing quality. Failed families remain
+   uncertified. These are acceptance targets, not existing evidence.
+
+The initial correctness checkpoint adds building-kit v2 explicit up/down stair assets, dependency
+enumeration and circulation-stage classification, and propagates stair realization errors.
+Version-1 kits still load for single-floor generation; multi-floor use requires a v2 kit with
+explicit stairs. Existing starter stair IDs are preserved as data, not newly certified assets.
+Authored room labels now use `BuildingRoomRole::from_label` and `label`; unresolved labels require
+review instead of silently becoming living rooms. This does not implement a trained room classifier,
+assembly discovery, distinct authored upper floors, or the certification corpus.
+
+The same checkpoint fixes two scene-slot constraints: optional wall finishing reserves one
+decoration slot per source-plane tile (all wall faces share it), and wall matching reserves fixed
+corner/pillar slots while keeping different source planes independent. A 48×10, seed-0, full-decoration
+fixture failed on competing corner decorations before the fix and passes afterward. Existing authored
+objects are not deleted to resolve these conflicts; unresolved structural conflicts still reject.
+
+Dataset v2 gains optional `models` evidence in object records: `combined` carries the ordered raw
+model-ID list; `typed_alternatives` carries ordered `{kind, model}` entries. Neither is a discovered
+multi-placement assembly. Full-width IDs and duplicates remain intact. Offline/runtime role features
+use identical `model_representation:*` and `model_entries:*` channels; absent evidence keeps legacy
+datasets/models usable. The role trainer now honors `human:member:<occurrence>:role` before the
+definition-wide human label; an explicit empty member correction suppresses that fallback. Inferred
+labels do not become training targets. Lab kit labels include explicit stair climb actions.
+Kit finishing validates canonical room-role keys through the same room-role owner rather than a
+second role-name list. Synthetic structural kit fixtures use the client's correct orientation
+numbering. The mixed-success/rejection reproduction test now creates deliberate source occupancy
+at a seed-dependent decoration anchor, so it does not depend on accidental generator defects.
+
+### Building-kit v2 compatibility
+
+`rustosrs-building-kit` version 2 adds optional `stairs` with `up` and `down` `KitAsset` records
+(`id`, scenery `kind` 10/11, and four orientations in north/east/south/west order). Missing stairs
+allow single-floor generation and reject multi-floor generation with `MissingStairs`. Invalid
+kinds/orientations reject compilation. Version 1 must omit stairs; unsupported versions reject.
+Stair dimensions come from source definitions through existing footprint resolution, not assumed
+one-tile declarations. This schema alone does not certify landing clearance or vertical traversal.
+
+`BuildingRoomRole` retains all canonical roles, including guest room, bathroom, armory and cell.
+Census aliases resolve explicitly (church → nave, bank → lobby, smithy → workshop, shop → sales
+floor, study → office, tavern/pub → common room). `general`, unknown and empty labels stay
+unresolved. Unassigned drawn floor remains the existing default living-space intent.
+
+## Earlier rationale and source observations
+
 Plan of record for extending the building generator's WFC from hand-written patterns toward
 patterns, weights and small models learned from real maps. Written 2026-10-18; the dataset exporter
-(`osrs-world/examples/building_dataset.rs`) exists, everything after "Phases" is not built.
+now lives in `osrs-editor/examples/building_dataset.rs`, where composition can use both world/cache
+inputs and the Lab's canonical learning split. Current implementation status is recorded in
+`DEV_HANDOFF.md` and `docs/PROJECT-STATUS.md`; the phases below preserve the original sequence.
 
 ## Where the generator stands
 
@@ -95,7 +167,7 @@ same.
 ```sh
 AREAS=/path/to/RLHD/src/main/resources/rs117/hd/scene/areas.json \
 CENSUS_EXCLUDE=user_world_defs.json \
-cargo run --release -p osrs-world --example building_dataset -- "<OpenRune root>" out/
+cargo run --release -p osrs-editor --example building_dataset -- "<OpenRune root>" out/
 ```
 
 ## Learning to lay paths (implemented)

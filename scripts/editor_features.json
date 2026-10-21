@@ -1,6 +1,18 @@
 {
   "version": 2,
   "features": {
+    "Authored snapshots": {
+      "id": "authored-snapshots",
+      "aliases": ["authored snapshot", "workspace snapshot", "authored document identity", "workspace content snapshot"],
+      "owner": { "crate": "osrs-editor", "area": "session/authored_snapshot" },
+      "status": "implemented",
+      "kind": "workspace",
+      "mutates_document": false,
+      "controller": {
+        "file": "crates/osrs-editor/src/app/project_runtime/native/snapshot.rs",
+        "symbol": "start_authored_snapshot"
+      }
+    },
     "Select": {
       "id": "select",
       "aliases": ["selection", "marquee", "marquee select"],
@@ -222,7 +234,7 @@
       },
       "planner": {
         "file": "crates/osrs-edit/src/prefab/place.rs",
-        "symbol": "plan_place_prefab"
+        "symbol": "try_plan_place_prefab"
       },
       "gateway": {
         "file": "crates/osrs-editor/src/app/editing/prefab_commit.rs",
@@ -247,7 +259,12 @@
     },
     "Buildings": {
       "id": "buildings",
-      "aliases": ["building generator", "procedural building", "procgen building", "building kit"],
+      "aliases": ["building generator", "procedural building", "procgen building", "building kit",
+        "building reproduction",
+        "reproduce building",
+        "building failure reproduction",
+        "rejected building"
+      ],
       "owner": {
         "crate": "osrs-edit",
         "area": "building_kit"

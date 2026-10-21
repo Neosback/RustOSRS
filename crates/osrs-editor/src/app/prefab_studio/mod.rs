@@ -347,6 +347,7 @@ fn frame(app: &mut EditorApp, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
                     studio.problem = Some(e);
                 }
             }
+            #[cfg(not(target_arch = "wasm32"))]
             Some(SceneCommand::PolicyReplay(replay)) => {
                 if let Some(pad) = &studio.pad {
                     let (task, actions) = *replay;

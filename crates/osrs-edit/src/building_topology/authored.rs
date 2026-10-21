@@ -45,7 +45,9 @@ pub fn plan_authored_rooms(
             return Err("Room membership overlaps or extends outside the drawn floor");
         }
         if !cells.is_empty() {
-            groups.push((room.id, role(&room.role), cells));
+            let role = BuildingRoomRole::from_label(&room.role)
+                .ok_or("Review the room type before generation: its label is unresolved")?;
+            groups.push((room.id, role, cells));
         }
     }
     remaining.retain(|c| !assigned.contains(c));
@@ -248,23 +250,4 @@ pub fn plan_authored_rooms(
         room_roles: roles,
         preferred_connections: vec![],
     })
-}
-fn role(name: &str) -> BuildingRoomRole {
-    use BuildingRoomRole::*;
-    match name.to_lowercase().as_str() {
-        "kitchen" => Kitchen,
-        "bedroom" | "guest_room" => Bedroom,
-        "workshop" | "smithy" => Workshop,
-        "storage" => Storage,
-        "bank" | "lobby" => Lobby,
-        "vault" => Vault,
-        "bar" => Bar,
-        "pub" | "tavern" | "common_room" => CommonRoom,
-        "shop" | "sales_floor" => SalesFloor,
-        "chapel" | "nave" => Nave,
-        "altar" => Altar,
-        "office" | "study" => Office,
-        "utility" => Utility,
-        _ => Living,
-    }
 }

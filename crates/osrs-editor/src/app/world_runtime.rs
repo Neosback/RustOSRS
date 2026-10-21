@@ -4,10 +4,15 @@
 //! which builds are in flight, which regions or zones wait for a rebuild after an edit, and the
 //! animation worker's schedule. It never owns edited map semantics; those live in `EditorSession`.
 
+mod animation;
+mod artifacts;
 mod builds;
 mod height_dependencies;
 mod inspection;
 mod lifecycle;
+pub(in crate::app) use animation::{AnimationArtifact, AnimationArtifactIdentity};
+pub(in crate::app) use artifacts::RegionArtifactIdentity;
+pub(in crate::app) use builds::RegionBuild;
 pub(in crate::app) use inspection::CollisionInspection;
 mod invalidation;
 mod npc;
@@ -15,6 +20,7 @@ mod object_output_store;
 mod stats;
 
 use self::{
+    animation::AnimationSchedule,
     builds::{BuildTracker, ObjectOutputStamp},
     height_dependencies::{HeightDependencyStamp, HeightDependencyStore},
     object_output_store::ObjectOutputStore,
@@ -23,11 +29,14 @@ use self::{
 use osrs_core::coords::RegionCoord;
 use osrs_render::SceneGeometry;
 use osrs_world::{
-    AnimatedInstance, AnimationWorker, HeightDependencySnapshot, LocEdit, RegionStreamer,
-    StreamEvent, TerrainPresentation, TileEdit,
+    AnimationWorker, LocEdit, RegionGeometry, RegionStreamer, StreamEvent, TerrainPresentation,
+    TileEdit,
 };
-use std::collections::{BTreeSet, HashMap, HashSet};
 use std::time::Duration;
+use std::{
+    collections::{BTreeSet, HashMap, HashSet},
+    sync::Arc,
+};
 
 /// Regions being built at once.
 const MAX_IN_FLIGHT: usize = 4;
@@ -51,16 +60,6 @@ pub(super) enum RegionBuildScope {
     Zones(BTreeSet<ZoneKey>),
 }
 
-/// When animated geometry was last requested, and what forces another request.
-#[derive(Default)]
-struct AnimationSchedule {
-    smoothing: bool,
-    frozen: bool,
-    cycle: u64,
-    center: (i32, i32),
-    dirty: bool,
-}
-
 pub(super) struct WorldRuntime {
     inspection: inspection::InspectionProjection,
     streamer: RegionStreamer,
@@ -68,7 +67,8 @@ pub(super) struct WorldRuntime {
     animation: AnimationSchedule,
     presentation_generation: u32,
     presentation_hd: bool,
-    /// Regions resident on the GPU (`None` = the cache has no map data there).
+    /// Region residency (`None` = unavailable: absent, failed, or semantically rejected).
+    /// Unavailable entries suppress request loops until a rebuild, edit, or eviction permits retry.
     loaded: HashMap<RegionKey, Option<RegionStats>>,
     /// Projection-only Height dependency data installed from accepted current worker builds.
     height_dependencies: HeightDependencyStore,
@@ -76,9 +76,9 @@ pub(super) struct WorldRuntime {
     object_outputs: ObjectOutputStore,
     /// FIFO request identity and per-region projection epochs for stale-result rejection.
     builds: BuildTracker,
-    /// Regions waiting for a conservative full rebuild after an edit.
+    /// Regions requiring a full rebuild, retained until a current completion is accepted.
     dirty_regions: HashSet<RegionKey>,
-    /// Fine-grained zones waiting for refresh, grouped by their owning region.
+    /// Required zones, including in-flight scopes until current completion; grouped by region.
     dirty_zones: HashMap<RegionKey, BTreeSet<ZoneKey>>,
     /// Whether the cache worker has reported ready.
     ready: bool,
@@ -95,10 +95,7 @@ impl WorldRuntime {
             inspection: inspection::InspectionProjection::default(),
             streamer,
             animations: AnimationWorker::spawn(),
-            animation: AnimationSchedule {
-                dirty: true,
-                ..AnimationSchedule::default()
-            },
+            animation: AnimationSchedule::new(),
             presentation_generation: 1,
             presentation_hd: false,
             loaded: HashMap::new(),
@@ -144,6 +141,7 @@ impl WorldRuntime {
         self.dirty_zones.clear();
         self.height_dependencies.clear();
         self.object_outputs.clear();
+        self.reset_animation_regions();
         self.builds.reset_source();
         self.ready = false;
         std::mem::replace(&mut self.streamer, streamer)
@@ -169,6 +167,10 @@ impl WorldRuntime {
         generation == self.presentation_generation
     }
 
+    pub(in crate::app) const fn presentation_generation(&self) -> u32 {
+        self.presentation_generation
+    }
+
     pub(super) fn set_smooth_terrain(&self, smooth: bool) {
         self.streamer.set_presentation(
             Self::presentation(smooth, self.presentation_hd),
@@ -187,7 +189,7 @@ impl WorldRuntime {
         );
         let keys: Vec<_> = self.loaded.keys().copied().collect();
         for &key in &keys {
-            self.animations.remove_region(key);
+            self.remove_animation_region(key);
         }
         self.loaded.clear();
         self.height_dependencies.clear();
@@ -195,7 +197,7 @@ impl WorldRuntime {
         self.builds.cancel_all();
         self.dirty_regions.clear();
         self.dirty_zones.clear();
-        self.animation.dirty = true;
+        self.animation_inputs_changed();
         keys
     }
 
@@ -204,26 +206,27 @@ impl WorldRuntime {
     /// contextual worker result.
     pub(super) fn region_installed(
         &mut self,
-        key: RegionKey,
+        identity: Arc<RegionArtifactIdentity>,
         scope: &RegionBuildScope,
-        geometry: &SceneGeometry,
-        dependencies: &HeightDependencySnapshot,
-        animations: Vec<AnimatedInstance>,
+        projection: RegionGeometry,
     ) {
-        self.animations.insert_region(key, animations);
-        let projection_epoch = self.builds.projection_epoch(key);
+        let region = identity.region();
+        let key = (region.x, region.y);
+        debug_assert_eq!(region, projection.region);
+        let geometry = &projection.geometry;
+        self.install_animation_region(Arc::clone(&identity), projection.animations);
+        let projection_epoch = identity.projection_epoch();
         let height_stamp =
-            HeightDependencyStamp::new(projection_epoch, self.presentation_generation);
-        let _ = self
-            .height_dependencies
-            .install(key, height_stamp, dependencies);
+            HeightDependencyStamp::new(projection_epoch, identity.presentation_generation());
+        let _ =
+            self.height_dependencies
+                .install(key, height_stamp, &projection.height_dependencies);
         self.object_outputs.install(
             key,
-            ObjectOutputStamp::new(projection_epoch, self.presentation_generation),
+            ObjectOutputStamp::new(projection_epoch, identity.presentation_generation()),
             scope,
             geometry,
         );
-        self.animation.dirty = true;
         match scope {
             RegionBuildScope::Full => {
                 self.loaded
@@ -238,24 +241,20 @@ impl WorldRuntime {
                 stats.refresh(scope, geometry);
             }
         }
-    }
-
-    /// Mark a current build as absent. Stale completions are filtered by [`Self::build_finished`]
-    /// before this method is called, so they cannot overwrite newer residency state.
-    pub(super) fn region_absent(&mut self, key: RegionKey, scope: &RegionBuildScope) {
-        if matches!(scope, RegionBuildScope::Full) {
-            self.loaded.insert(key, None);
-            self.height_dependencies.remove(key);
-            self.object_outputs.remove(key);
-        }
+        self.install_info(identity, projection.info);
     }
 
     /// Match one FIFO Region/Empty/Failed event to its editor-side build ticket.
     ///
     /// Returns `None` when the request was cancelled/replaced, a newer edit advanced the region's
     /// projection epoch, or the request belongs to an older presentation generation.
-    pub(super) fn build_finished(&mut self, key: RegionKey) -> Option<RegionBuildScope> {
-        self.builds.finish(key, self.presentation_generation)
+    pub(super) fn build_finished(&mut self, key: RegionKey) -> Option<RegionBuild> {
+        let build = self.builds.finish(key, self.presentation_generation)?;
+        // No newer edit can be pending for an accepted ticket: it would have advanced the epoch.
+        // Stale completions retain the union of their original scope and any newer required work.
+        self.dirty_regions.remove(&key);
+        self.dirty_zones.remove(&key);
+        Some(build)
     }
 
     /// Resolve one accepted worker result into the static install scope. Normal builds keep their
@@ -296,8 +295,7 @@ impl WorldRuntime {
             self.builds.cancel(key);
             self.dirty_regions.remove(&key);
             self.dirty_zones.remove(&key);
-            self.animations.remove_region(key);
-            self.animation.dirty = true;
+            self.remove_animation_region(key);
         }
         stale
     }
@@ -335,15 +333,6 @@ impl WorldRuntime {
         self.project_tile_edits(edits);
     }
 
-    /// Mirror live/legacy loc edits and derive rebuild scope from their adapter coordinates.
-    pub(super) fn mirror_loc_edits(&mut self, edits: Vec<LocEdit>) {
-        for edit in &edits {
-            let (LocEdit::Remove(spec) | LocEdit::Add(spec)) = edit;
-            self.mark_dirty(spec.region());
-        }
-        self.project_loc_edits(edits);
-    }
-
     /// Mirror already-finalized semantic tile edits without deriving invalidation from legacy data.
     pub(super) fn project_tile_edits(&self, edits: Vec<TileEdit>) {
         if !edits.is_empty() {
@@ -360,6 +349,7 @@ impl WorldRuntime {
 
     /// Request rebuild work that is not already in flight. Full refreshes request the whole static
     /// region; zone refreshes carry their exact zone set through worker extraction and GPU install.
+    /// Required areas remain recorded until a current completion, so supersession cannot lose work.
     pub(super) fn flush_dirty_regions(&mut self) {
         let full_ready: Vec<RegionKey> = self
             .dirty_regions
@@ -371,8 +361,6 @@ impl WorldRuntime {
             if self.builds.len() >= MAX_IN_FLIGHT {
                 break;
             }
-            self.dirty_regions.remove(&key);
-            self.dirty_zones.remove(&key);
             self.builds
                 .request(key, RegionBuildScope::Full, self.presentation_generation);
             self.streamer.request(RegionCoord::new(key.0, key.1));
@@ -388,7 +376,7 @@ impl WorldRuntime {
             if self.builds.len() >= MAX_IN_FLIGHT {
                 break;
             }
-            let Some(zones) = self.dirty_zones.remove(&key) else {
+            let Some(zones) = self.dirty_zones.get(&key).cloned() else {
                 continue;
             };
             if zones.is_empty() {
@@ -403,65 +391,6 @@ impl WorldRuntime {
             self.streamer
                 .request_zones(RegionCoord::new(key.0, key.1), requested);
         }
-    }
-
-    // ----------------------------------------------------------------- animation
-
-    pub(super) fn mark_animation_dirty(&mut self) {
-        self.animation.dirty = true;
-    }
-
-    pub(super) fn set_animation_smoothing(&mut self, enabled: bool) {
-        self.animation.smoothing = enabled;
-        self.animations.set_smoothing(enabled);
-    }
-
-    /// Geometry the animation worker finished since the last poll.
-    pub(super) fn poll_animation_geometry(&mut self) -> Option<(SceneGeometry, f32)> {
-        let update = self.animations.poll()?;
-        update
-            .geometry
-            .map(|geometry| (geometry, update.rebuild_ms))
-    }
-
-    /// Request the next animation step if the schedule calls for one.
-    pub(super) fn schedule_animation(
-        &mut self,
-        animate_objects: bool,
-        elapsed_secs: f32,
-        camera_tile: (i32, i32),
-    ) {
-        let frozen = !animate_objects;
-        if frozen != self.animation.frozen {
-            self.animation.frozen = frozen;
-            self.animations.set_frozen(frozen);
-            self.animation.dirty = true;
-        }
-        if !self.animations.is_idle() {
-            return;
-        }
-        let cycle = (elapsed_secs * 50.0) as u64;
-        let moved = (camera_tile.0 - self.animation.center.0)
-            .abs()
-            .max((camera_tile.1 - self.animation.center.1).abs())
-            >= ANIMATION_RECENTRE_TILES;
-        let stride = if self.animation.smoothing {
-            1
-        } else {
-            ANIMATION_STRIDE_CYCLES
-        };
-        if (frozen || cycle < self.animation.cycle + stride) && !self.animation.dirty && !moved {
-            return;
-        }
-        let delta = (cycle - self.animation.cycle).min(500) as i32;
-        self.animation.cycle = cycle;
-        if self.animation.dirty || moved {
-            self.animation.dirty = false;
-            self.animation.center = camera_tile;
-            self.animations.force_rebuild();
-        }
-        self.animations
-            .request(delta, self.animation.center, ANIMATION_RADIUS_TILES);
     }
 }
 
@@ -494,4 +423,9 @@ fn stale_regions(
 }
 
 #[cfg(test)]
+pub(in crate::app) mod test_support;
+#[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod projection_contract_tests;

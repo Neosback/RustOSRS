@@ -5,19 +5,19 @@ use osrs_world::{ObjectOutputComparison, ObjectOutputProofError, ObjectOutputSna
 use std::collections::{BTreeSet, HashMap, VecDeque};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct BuildStamp {
-    request_id: u64,
-    revision: u64,
-    source: u64,
-    projection_epoch: u64,
-    presentation_generation: u32,
+pub(super) struct BuildStamp {
+    pub(super) request_id: u64,
+    pub(super) revision: u64,
+    pub(super) source: u64,
+    pub(super) projection_epoch: u64,
+    pub(super) presentation_generation: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct PendingBuild {
-    key: RegionKey,
-    scope: RegionBuildScope,
-    stamp: BuildStamp,
+pub(in crate::app) struct RegionBuild {
+    pub(super) key: RegionKey,
+    pub(super) scope: RegionBuildScope,
+    pub(super) stamp: BuildStamp,
 }
 
 /// Freshness identity for one accepted Object producer-output snapshot.
@@ -172,7 +172,7 @@ pub(super) struct BuildTracker {
     source: u64,
     diagnostics: DiagnosticSink,
     projection_epochs: HashMap<RegionKey, u64>,
-    pending_results: VecDeque<PendingBuild>,
+    pending_results: VecDeque<RegionBuild>,
     current: HashMap<RegionKey, u64>,
 }
 
@@ -239,7 +239,7 @@ impl BuildTracker {
         };
         self.observe_build(key, stamp, "requested");
         self.pending_results
-            .push_back(PendingBuild { key, scope, stamp });
+            .push_back(RegionBuild { key, scope, stamp });
         self.current.insert(key, request_id);
     }
 
@@ -258,7 +258,7 @@ impl BuildTracker {
         &mut self,
         key: RegionKey,
         presentation_generation: u32,
-    ) -> Option<RegionBuildScope> {
+    ) -> Option<RegionBuild> {
         let pending = self.pending_results.pop_front()?;
         if pending.key != key {
             debug_assert_eq!(
@@ -288,7 +288,7 @@ impl BuildTracker {
             "ticket accepted"
         };
         self.observe_build(key, pending.stamp, outcome);
-        accepted.then_some(pending.scope)
+        accepted.then_some(pending)
     }
 
     /// Stop treating a request as current while retaining its FIFO result ticket.

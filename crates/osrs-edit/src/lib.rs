@@ -29,6 +29,7 @@ mod building_roof_section_repair_realization;
 mod building_roof_section_solver;
 mod building_roof_section_wfc;
 mod building_roof_sections;
+mod building_roof_shape;
 mod building_roof_solver;
 mod building_roof_wfc;
 mod building_routing;
@@ -48,6 +49,10 @@ pub use wfc_lens::{
     Sample as WfcSample, Step as WfcStep, Task as WfcTask, look as wfc_look,
     refloor_task as wfc_refloor_task, sample as wfc_sample, trace as wfc_trace,
 };
+mod content_digest;
+pub use content_digest::{MAP_DOCUMENT_DIGEST_ALGORITHM_V1, MAP_PATCH_DIGEST_ALGORITHM_V1};
+mod semantic_transport;
+pub use semantic_transport::{MAP_PATCH_FORMAT_V1, MAP_SNAPSHOT_FORMAT_V1, SemanticTransportError};
 mod document;
 mod document_diff;
 pub use document_diff::{HeightDomainChanged, plan_document_sync};
@@ -83,12 +88,15 @@ pub use building_generation::{
 };
 pub use building_kit::{
     BuildingKit, BuildingStage, KIT_FORMAT, KIT_VERSION, KitAsset, KitError, KitFile, KitFloor,
-    KitGenerateError, KitHipRoof, KitJunction, KitOverlay, KitRoof, KitRoofPattern,
-    KitWeightedAsset,
+    KitFootprint, KitGenerateError, KitHipRoof, KitJunction, KitOverlay, KitRoof, KitRoofPattern,
+    KitStairs, KitWeightedAsset,
 };
 pub use building_program::{
     BspCorridor, BspLayout, BspLayoutError, BspRoomPlacement, BuildingProgram, BuildingRoomRole,
-    ProgramConnection, ProgramRoom, building_program, pack_building_program,
+    CompactLayout, FootprintShape, LayoutStyle, ProgramConnection, ProgramRoom, ROOM_COUNT_BUCKETS,
+    ROOM_COUNT_TABLE, RoomCountRow, archetype_min_rooms, building_program, pack_building_program,
+    pack_compact_program, pack_fitted_compact_program, pack_fitted_program, plan_compact_layout,
+    plan_compact_layout_for, sampled_room_count, upper_floor_program,
 };
 pub use building_realization::{
     BuildingArchitecture, BuildingArchitectureError, BuildingPalette, BuildingRealizationError,
@@ -109,7 +117,7 @@ pub use building_roof::{
     plan_roof_shape,
 };
 pub use building_roof_generation::{RoofGenerationError, generate_roof_patch};
-pub use building_roof_hip::{HipRoofAssets, hip_roof_placements};
+pub use building_roof_hip::{HipRoofAssets, RoofKinds, hip_roof_placements};
 pub use building_roof_realization::{
     RoofAsset, RoofPalette, RoofPaletteEntry, RoofPaletteError, RoofPatchError,
     RoofPlacementDescription, RoofPlacementDescriptionError, build_roof_patch,
@@ -147,6 +155,9 @@ pub use building_roof_sections::{
     RoofSection, RoofSectionError, RoofSectionShape, decompose_roof_sections,
     plan_roof_section_shapes,
 };
+pub use building_roof_shape::{
+    GableCorner, RoofAxis, RoofChoice, gable_roof_placements, plan_roof_choice, roof_placements,
+};
 pub use building_roof_solver::{
     RoofPatternSelection, RoofWfcSolution, RoofWfcSolveError, solve_roof_wfc,
 };
@@ -154,7 +165,7 @@ pub use building_roof_wfc::{RoofConstraintError, RoofPatternSet, roof_wfc_constr
 pub use building_routing::{ProgramRoute, ProgramRoutingError, route_program_connections};
 pub use building_topology::{
     BspBuildingPlan, BspTopologyError, BuildingSketch, ProgramRoomRole, build_bsp_building_plan,
-    plan_authored_rooms,
+    build_compact_building_plan, plan_authored_rooms,
 };
 pub use building_validation::{
     BuildingDiagnostic, BuildingValidationReport, GenerationSnapshot, OccupiedFootprint,
@@ -162,8 +173,9 @@ pub use building_validation::{
 };
 pub use building_vertical::{
     BuildingFloorIndex, BuildingFloorSurface, BuildingVerticalError, BuildingVerticalPlan,
-    StairAnchor, StairAsset, StairConstraintError, StairPalette, StairPatternSet,
-    StairRealizationError, build_stair_patch, plan_vertical_connectivity, stair_wfc_constraints,
+    FloorLayout, StairAnchor, StairAsset, StairConstraintError, StairPalette, StairPatternSet,
+    StairRealizationError, build_stair_patch, plan_vertical_connectivity,
+    plan_vertical_connectivity_in_layouts, stair_wfc_constraints,
 };
 pub use building_walls::resolve_wall_slots;
 pub use building_wfc::{
@@ -187,7 +199,8 @@ pub use prefab::{
     PrefabHeight, PrefabObject, PrefabOverlay, PrefabPortal, PrefabRelation, PrefabRoom,
     PrefabSemantics, PrefabSource, PrefabTile, capture_building_prefab, capture_prefab,
     capture_prefab_over, objects_in_rect, objects_overlapping_rect, plan_place_exact,
-    plan_place_prefab, prefab_from_patch, prefab_placement_origin, turned_size,
+    plan_place_prefab, prefab_from_patch, prefab_placement_origin, try_object_footprint,
+    try_objects_overlapping_rect, try_plan_place_exact, try_plan_place_prefab, turned_size,
 };
 pub use query::MapQuery;
 pub use region::{MapRegionSnapshot, RegionSnapshotError};

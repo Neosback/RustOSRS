@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "case": {
+    "kind": "base_normals",
+    "vertex_normals": [
+      {
+        "x": 17,
+        "y": -254,
+        "z": -16,
+        "magnitude": 1
+      },
+      {
+        "x": 17,
+        "y": -254,
+        "z": -16,
+        "magnitude": 1
+      },
+      {
+        "x": 17,
+        "y": -254,
+        "z": -16,
+        "magnitude": 1
+      },
+      {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "magnitude": 0
+      }
+    ],
+    "face_normals": [
+      null,
+      {
+        "x": -230,
+        "y": -112,
+        "z": 1
+      },
+      null
+    ]
+  }
+}

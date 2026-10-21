@@ -5,9 +5,11 @@ use crate::{
 };
 fn request() -> BuildingRequest {
     BuildingRequest {
-        site: RectSite::new(MapTile::new(0, 0), 10, 10).unwrap(),
+        site: RectSite::new(MapTile::new(0, 0), 10, 10)
+            .unwrap_or_else(|| panic!("valid fixture site")),
         seed: 17,
-        base_plane: osrs_core::coords::SourcePlane::new(0).unwrap(),
+        base_plane: osrs_core::coords::SourcePlane::new(0)
+            .unwrap_or_else(|| panic!("valid fixture plane")),
         floors: 1,
         archetype: BuildingArchetype::House,
         style: BuildingStyle::Generic,
@@ -35,12 +37,13 @@ fn sparse_l_room_keeps_the_drawn_footprint_and_opens_its_decomposition_seams() {
         },
         floors,
     };
-    let result = plan_authored_rooms(request(), &sketch).unwrap();
+    let result =
+        plan_authored_rooms(request(), &sketch).unwrap_or_else(|error| panic!("{error:?}"));
     let actual: BTreeSet<_> = result
         .plan
         .rooms
         .iter()
-        .flat_map(|r| rect_tiles(r.rect).unwrap())
+        .flat_map(|r| rect_tiles(r.rect).unwrap_or_else(|error| panic!("{error:?}")))
         .collect();
     let expected: BTreeSet<_> = sketch
         .floors
@@ -57,7 +60,10 @@ fn sparse_l_room_keeps_the_drawn_footprint_and_opens_its_decomposition_seams() {
             .all(|c| c.kind == PortalKind::Open)
     );
     assert!(derive_building_architecture(&result.plan).is_ok());
-    assert_eq!(result, plan_authored_rooms(request(), &sketch).unwrap());
+    assert_eq!(
+        result,
+        plan_authored_rooms(request(), &sketch).unwrap_or_else(|error| panic!("{error:?}"))
+    );
 }
 #[test]
 fn explicit_portal_connects_requested_room_roles_and_disconnected_programs_fail() {
@@ -94,7 +100,8 @@ fn explicit_portal_connects_requested_room_roles_and_disconnected_programs_fail(
             ..Default::default()
         },
     };
-    let result = plan_authored_rooms(request(), &sketch).unwrap();
+    let result =
+        plan_authored_rooms(request(), &sketch).unwrap_or_else(|error| panic!("{error:?}"));
     assert!(
         result
             .plan
@@ -121,7 +128,8 @@ fn courtyard_hole_is_not_filled_by_room_partitioning() {
         floors,
         semantics: Default::default(),
     };
-    let result = plan_authored_rooms(request(), &sketch).unwrap();
+    let result =
+        plan_authored_rooms(request(), &sketch).unwrap_or_else(|error| panic!("{error:?}"));
     assert!(
         !result
             .plan
@@ -130,4 +138,44 @@ fn courtyard_hole_is_not_filled_by_room_partitioning() {
             .any(|r| r.rect.contains(MapTile::new(4, 4)))
     );
     assert!(derive_building_architecture(&result.plan).is_ok());
+}
+
+#[test]
+fn authored_room_roles_survive_planning_and_unresolved_labels_require_review() {
+    let floors: Vec<_> = (1..=8)
+        .flat_map(|x| (1..=8).map(move |y| cell(x, y)))
+        .collect();
+    let mut sketch = BuildingSketch {
+        origin: MapTile::new(0, 0),
+        semantics: PrefabSemantics {
+            rooms: vec![PrefabRoom {
+                id: 0,
+                role: "guest_room".into(),
+                cells: floors.clone(),
+                human: true,
+            }],
+            ..Default::default()
+        },
+        floors,
+    };
+    for (label, expected) in [
+        ("guest_room", BuildingRoomRole::GuestRoom),
+        ("church", BuildingRoomRole::Nave),
+        ("armory", BuildingRoomRole::Armory),
+        ("cell", BuildingRoomRole::Cell),
+        ("bathroom", BuildingRoomRole::Bathroom),
+        ("great_hall", BuildingRoomRole::GreatHall),
+    ] {
+        sketch.semantics.rooms[0].role = label.into();
+        let plan = plan_authored_rooms(request(), &sketch).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(plan.role_for(plan.plan.rooms[0].id), Some(expected));
+        assert_eq!(
+            BuildingRoomRole::from_label(expected.label()),
+            Some(expected)
+        );
+    }
+    for label in ["general", "unknown", "", "not_a_room_type"] {
+        sketch.semantics.rooms[0].role = label.into();
+        assert!(plan_authored_rooms(request(), &sketch).is_err(), "{label}");
+    }
 }

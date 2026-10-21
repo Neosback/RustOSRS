@@ -20,6 +20,7 @@ wgpu.workspace = true
 web-time.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json = "1.0.152"
+sha2.workspace = true
 egui-phosphor = "0.14.0"
 egui-elegance = "0.16.2"
 transform-gizmo-egui = "0.11.0"
@@ -47,3 +48,6 @@ workspace = true
 
 [dev-dependencies]
 pollster.workspace = true
+
+[build-dependencies]
+sha2.workspace = true

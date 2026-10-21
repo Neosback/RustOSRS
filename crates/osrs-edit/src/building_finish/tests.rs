@@ -91,8 +91,10 @@ fn kit() -> KitFile {
         roof_hip: Some(KitHipRoof {
             slope_object: 1924,
             edge_object: 1790,
+            style: Default::default(),
         }),
         finish: Some(finish()),
+        stairs: None,
         roof: None,
     }
 }
@@ -137,6 +139,33 @@ fn objects(patch: &MapPatch) -> Vec<ObjectPlacement> {
             _ => None,
         })
         .collect()
+}
+
+#[test]
+fn optional_wall_decoration_never_competes_for_one_scene_slot_at_room_corners() {
+    let mut file = kit();
+    file.finish
+        .as_mut()
+        .unwrap_or_else(|| panic!("finish"))
+        .wall_decor_percent = 100;
+    let compiled = file.compile().unwrap_or_else(|e| panic!("{e}"));
+    for seed in 0..16 {
+        let (_, snapshot) = site(BuildingArchetype::House, seed, 48, 10);
+        let patch = compiled
+            .generate(&snapshot, 0)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        let mut slots = HashSet::new();
+        for p in objects(&patch)
+            .into_iter()
+            .filter(|p| (4..=8).contains(&p.kind.get()))
+        {
+            assert!(
+                slots.insert(p.position),
+                "seed {seed}: competing wall decoration at {:?}",
+                p.position
+            );
+        }
+    }
 }
 
 #[test]

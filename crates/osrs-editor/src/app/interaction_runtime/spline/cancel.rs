@@ -11,8 +11,10 @@ impl InteractionRuntime {
         self.spline.cancelled_key = self.spline.desired_key;
         #[cfg(not(target_arch = "wasm32"))]
         {
-            // Dropping the worker ends its thread; a result in flight is discarded.
-            self.spline.worker = None;
+            // Keep one physical worker; discard queued and completed work immediately.
+            if let Some(worker) = &mut self.spline.worker {
+                worker.cancel();
+            }
         }
     }
 
@@ -26,7 +28,9 @@ impl InteractionRuntime {
         if self.spline.cancelled_key == Some(key) {
             #[cfg(not(target_arch = "wasm32"))]
             {
-                self.spline.worker = None;
+                if let Some(worker) = &mut self.spline.worker {
+                    worker.cancel();
+                }
             }
             return true;
         }

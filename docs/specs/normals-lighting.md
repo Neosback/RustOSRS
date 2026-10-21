@@ -39,6 +39,15 @@ This is **normal reconciliation, not mesh welding**. Vertices/faces/object ident
 
 No positional match means no merge. `hideMatchedFaces=false` still permits normal accumulation.
 
+The pinned loop counts matching **pairs**, including duplicate-position vertices, without welding
+their identity. A vertex with zero base-normal magnitude (for example, a flat-only vertex) is
+ineligible on either model. Translation is subtracted from the left model in all three axes.
+A merge with only two eligible matching pairs accumulates normals but cannot trigger matched-face hiding.
+
+The [pinned method oracle](../../scripts/normal_oracle/README.md) and normalized `normals/` fixture
+family exercise these rules, mixed smooth/flat/suppressed base faces, and signed integer truncation.
+They prove the isolated methods; scene-neighbor traversal remains a separate `NORMALS-003` contract.
+
 ---
 
 ## SPEC: NORMALS-003

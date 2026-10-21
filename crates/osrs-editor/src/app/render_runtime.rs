@@ -1,17 +1,17 @@
 //! GPU renderer, viewport targets, and frame submission owned by the editor runtime.
+mod actors;
+mod regions;
 mod reuse;
 mod theme;
 
+use super::world_runtime::{AnimationArtifactIdentity, RegionArtifactIdentity};
 use eframe::{egui, egui_wgpu, wgpu};
 use osrs_hd::shadows::ShadowSettings;
-use osrs_render::{
-    SceneGeometry,
-    gpu::{
-        COLOR_FORMAT, FrameParams, HdLighting, HdParams, LineVertex, SceneRenderer, TextureLayer,
-    },
+use osrs_render::gpu::{
+    COLOR_FORMAT, FrameParams, HdLighting, HdParams, LineVertex, SceneRenderer, TextureLayer,
 };
 use osrs_world::hd::gpu::HdGpuData;
-use std::collections::{BTreeMap, BTreeSet};
+use std::{collections::BTreeMap, sync::Arc};
 
 const ZONES_PER_REGION_AXIS: i32 = 8;
 const ZONES_PER_REGION: i32 = ZONES_PER_REGION_AXIS * ZONES_PER_REGION_AXIS;
@@ -49,7 +49,10 @@ pub(super) struct RenderRuntime {
     render_state: egui_wgpu::RenderState,
     scene: SceneRenderer,
     /// World-zone keys currently installed for each streamed 64x64 map region.
-    region_zones: BTreeMap<RegionKey, BTreeSet<ZoneKey>>,
+    region_zones: BTreeMap<RegionKey, BTreeMap<ZoneKey, Arc<RegionArtifactIdentity>>>,
+    animated_identity: Option<Arc<AnimationArtifactIdentity>>,
+    npc_identity: Option<Arc<super::npc_runtime::NpcArtifactIdentity>>,
+    player_identity: Option<Arc<super::player_runtime::PlayerArtifactIdentity>>,
     targets: Option<ViewportTargets>,
     reuse: reuse::ViewportReuse,
     theme_preparation: Option<osrs_render::gpu::theme::ThemeShaderPreparation>,
@@ -73,6 +76,9 @@ impl RenderRuntime {
             render_state,
             scene,
             region_zones: BTreeMap::new(),
+            animated_identity: None,
+            npc_identity: None,
+            player_identity: None,
             targets: None,
             reuse: reuse::ViewportReuse::default(),
             theme_preparation: None,
@@ -96,75 +102,6 @@ impl RenderRuntime {
     pub(super) fn set_textures(&mut self, layers: &[Option<TextureLayer>]) {
         self.reuse.invalidate();
         self.scene.set_textures(layers);
-    }
-
-    /// Replace one streamed region, storing each static 8x8 zone under its own opaque renderer key.
-    pub(super) fn upload_region(&mut self, key: RegionKey, geometry: &SceneGeometry) {
-        self.reuse.invalidate();
-        let incoming: BTreeSet<ZoneKey> = geometry
-            .zones
-            .iter()
-            .map(|zone| (zone.zone_x, zone.zone_z))
-            .collect();
-        let previous = self.region_zones.remove(&key).unwrap_or_default();
-
-        for stale in previous.difference(&incoming) {
-            self.scene.remove_region(zone_renderer_key(key, *stale));
-        }
-        for zone in &geometry.zones {
-            let zone_key = (zone.zone_x, zone.zone_z);
-            debug_assert!(zone_belongs_to_region(key, zone_key));
-            self.scene
-                .upload_zones(zone_renderer_key(key, zone_key), std::iter::once(zone));
-        }
-        self.region_zones.insert(key, incoming);
-    }
-
-    /// Refresh only the requested world zones of an already-resident streamed region.
-    ///
-    /// `geometry` may be a full worker result; only requested zones are installed. A requested zone
-    /// absent from the result is removed, which handles edits that make its geometry empty.
-    pub(super) fn upload_region_zones(
-        &mut self,
-        key: RegionKey,
-        geometry: &SceneGeometry,
-        requested: &BTreeSet<ZoneKey>,
-    ) {
-        self.reuse.invalidate();
-        let resident = self.region_zones.entry(key).or_default();
-        for &zone_key in requested {
-            debug_assert!(zone_belongs_to_region(key, zone_key));
-            let renderer_key = zone_renderer_key(key, zone_key);
-            match geometry
-                .zones
-                .iter()
-                .find(|zone| (zone.zone_x, zone.zone_z) == zone_key)
-            {
-                Some(zone) => {
-                    self.scene.upload_zones(renderer_key, std::iter::once(zone));
-                    resident.insert(zone_key);
-                }
-                None => {
-                    self.scene.remove_region(renderer_key);
-                    resident.remove(&zone_key);
-                }
-            }
-        }
-    }
-
-    /// Upload geometry that is not part of streamed static-region residency (animated locs).
-    pub(super) fn upload_transient(&mut self, key: (i32, i32), geometry: &SceneGeometry) {
-        self.reuse.invalidate();
-        self.scene.upload_region(key, geometry);
-    }
-
-    pub(super) fn remove_region(&mut self, key: RegionKey) {
-        self.reuse.invalidate();
-        if let Some(zones) = self.region_zones.remove(&key) {
-            for zone in zones {
-                self.scene.remove_region(zone_renderer_key(key, zone));
-            }
-        }
     }
 
     pub(super) fn set_overlay_lines(&mut self, lines: &[LineVertex]) {

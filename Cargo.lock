@@ -2594,6 +2594,7 @@ dependencies = [
  "osrs-core",
  "serde",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]
@@ -2624,6 +2625,7 @@ dependencies = [
  "rodio",
  "serde",
  "serde_json",
+ "sha2",
  "transform-gizmo-egui",
  "wasm-bindgen",
  "wasm-bindgen-futures",

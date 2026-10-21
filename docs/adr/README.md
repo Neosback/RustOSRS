@@ -68,8 +68,12 @@ Numbers are monotonic and never reused.
 | [ADR-0011-editor-ownership-and-feature-contracts.md](ADR-0011-editor-ownership-and-feature-contracts.md) | runtime ownership, headless tool planners, optional traces and executable feature navigation |
 | [ADR-0012-first-class-filestore.md](ADR-0012-first-class-filestore.md) | owned JS5 filestore, safe lazy native reads, verified incremental repacking |
 | [ADR-0014-authored-appearance.md](ADR-0014-authored-appearance.md) | application-owned theme snapshots, shared chronological history and validated GPU candidates |
-
 | [ADR-0015-building-ownership-and-lab.md](ADR-0015-building-ownership-and-lab.md) | reviewed sparse building ownership, isolated Studio and tool-driven procedural Lab |
+| [ADR-0016-canonical-semantic-content-identity.md](ADR-0016-canonical-semantic-content-identity.md) | versioned map/ordered-patch SHA-256 identity on canonical semantic owners |
+| [ADR-0017-semantic-map-transport.md](ADR-0017-semantic-map-transport.md) | validated full-world map snapshots and exact ordered patch transport, separate from project/recovery |
+| [ADR-0018-building-reproduction.md](ADR-0018-building-reproduction.md) | frozen building inputs, product-planner/gateway replay and native headless verification |
+| [ADR-0019-rejected-building-reproduction.md](ADR-0019-rejected-building-reproduction.md) | typed rejected-attempt evidence, exact failure replay and unchanged-map verification |
+| [ADR-0020-authored-document-snapshot.md](ADR-0020-authored-document-snapshot.md) | map/scenario/appearance content identity, frozen native snapshots and isolated headless checking |
 
 ## Proposed ADRs
 

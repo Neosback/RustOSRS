@@ -9,7 +9,8 @@ fn asset(id: u32, kind: u8) -> KitAsset {
     KitAsset {
         id,
         kind,
-        orientations: [0, 1, 2, 3],
+        // Semantic N/E/S/W maps to client orientation W/N/E/S.
+        orientations: [1, 2, 3, 0],
     }
 }
 
@@ -42,6 +43,7 @@ fn kit() -> KitFile {
         ],
         roof_hip: None,
         finish: None,
+        stairs: None,
         roof: Some(KitRoof {
             learned: None,
             patterns: (0..12u32)
@@ -68,6 +70,110 @@ fn kit() -> KitFile {
             ],
         }),
     }
+}
+
+#[test]
+fn footprint_requirements_cover_all_asset_sources_and_reject_ambiguous_hints() {
+    use crate::{KitDecor, KitFurniture, KitPlace, KitWindowDecor};
+    let mut file = kit();
+    for pattern in &mut file
+        .roof
+        .as_mut()
+        .unwrap_or_else(|| panic!("roof"))
+        .patterns
+    {
+        pattern.kind = 12;
+    }
+    assert!(
+        file.footprint_requirements()
+            .unwrap_or_else(|e| panic!("{e}"))
+            .is_empty()
+    );
+    file.exterior_wall = asset(1, 10);
+    file.interior_wall = asset(2, 11);
+    file.door = asset(3, 10);
+    file.window = Some(asset(4, 10));
+    file.corner = Some(asset(5, 11));
+    file.door_variants[0].asset = asset(6, 10);
+    file.roof
+        .as_mut()
+        .unwrap_or_else(|| panic!("roof"))
+        .patterns[0]
+        .id = 7;
+    file.roof
+        .as_mut()
+        .unwrap_or_else(|| panic!("roof"))
+        .patterns[0]
+        .kind = 10;
+    let furniture = KitFurniture {
+        id: 8,
+        kind: 10,
+        place: KitPlace::AgainstWall,
+        relative: 0,
+        min: 1,
+        max: 1,
+        size: [2, 3],
+    };
+    file.finish = Some(KitFinish {
+        furniture: [("living".into(), vec![furniture.clone()])].into(),
+        wall_decor: vec![KitDecor {
+            id: 9,
+            kind: 10,
+            weight: 1,
+        }],
+        window_decor: Some(KitWindowDecor {
+            outside: Some(KitDecor {
+                id: 10,
+                kind: 11,
+                weight: 1,
+            }),
+            inside: Some(KitDecor {
+                id: 11,
+                kind: 10,
+                weight: 1,
+            }),
+        }),
+        ..Default::default()
+    });
+    let facts = file
+        .footprint_requirements()
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(
+        facts.iter().map(|f| f.object.get()).collect::<Vec<_>>(),
+        (1..=11).collect::<Vec<_>>()
+    );
+    assert_eq!(facts[7].declared_size, Some((2, 3)));
+    assert!(
+        facts
+            .iter()
+            .filter(|f| f.object.get() != 8)
+            .all(|f| f.declared_size.is_none())
+    );
+    let finish = file.finish.as_mut().unwrap_or_else(|| panic!("finish"));
+    let mut conflicting = furniture;
+    conflicting.size = [1, 1];
+    finish.furniture.insert("bedroom".into(), vec![conflicting]);
+    assert!(matches!(
+        file.footprint_requirements(),
+        Err(KitError::Value { value: 8, .. })
+    ));
+    let finish = file.finish.as_mut().unwrap_or_else(|| panic!("finish"));
+    finish
+        .furniture
+        .get_mut("living")
+        .unwrap_or_else(|| panic!("living"))[0]
+        .size = [0, 3];
+    finish
+        .furniture
+        .get_mut("bedroom")
+        .unwrap_or_else(|| panic!("bedroom"))[0]
+        .size = [1, 3];
+    assert_eq!(
+        file.footprint_requirements()
+            .unwrap_or_else(|e| panic!("{e}"))[7]
+            .declared_size,
+        Some((1, 3))
+    );
 }
 
 fn snapshot(width: u16, height: u16) -> (MapDocument, crate::GenerationSnapshot) {
@@ -209,8 +315,8 @@ fn bad_kits_are_refused_with_a_reason() {
     assert!(matches!(file.compile(), Err(KitError::Format(_))));
 
     let mut file = kit();
-    file.version = 2;
-    assert!(matches!(file.compile(), Err(KitError::Version(2))));
+    file.version = KIT_VERSION + 1;
+    assert!(matches!(file.compile(), Err(KitError::Version(v)) if v == KIT_VERSION + 1));
 
     let mut file = kit();
     file.name = " ".into();
@@ -278,6 +384,7 @@ fn hip_kit() -> KitFile {
     file.roof_hip = Some(KitHipRoof {
         slope_object: 1924,
         edge_object: 1790,
+        style: Default::default(),
     });
     file.roof_plane_offset = 1;
     file
@@ -387,7 +494,12 @@ fn bigger_sites_get_more_rooms_and_small_ones_stay_simple() {
 
 #[test]
 fn two_floor_building_generates_upper_story_stairs_and_lifted_roof() {
-    let compiled = hip_kit().compile().unwrap_or_else(|e| unreachable!("{e}"));
+    let mut file = hip_kit();
+    file.stairs = Some(KitStairs {
+        up: asset(90001, 10),
+        down: asset(90002, 10),
+    });
+    let compiled = file.compile().unwrap_or_else(|e| unreachable!("{e}"));
     let plane0 = SourcePlane::new(0).unwrap_or_else(|| unreachable!());
     let request = BuildingRequest {
         seed: 77,
@@ -425,15 +537,18 @@ fn two_floor_building_generates_upper_story_stairs_and_lifted_roof() {
                 wall_planes.insert(p);
             } else if (12..=21).contains(&placement.kind.get()) {
                 roof_planes.insert(p);
-            } else if placement.object_id.get() == 16683 {
+            } else if placement.object_id.get() == 90001 {
                 has_stair_up = true;
-            } else if placement.object_id.get() == 16679 {
+            } else if placement.object_id.get() == 90002 {
                 has_stair_down = true;
             }
         }
     }
     assert_eq!(wall_planes, [0, 1].into());
-    assert_eq!(roof_planes, [2].into());
+    // The top floor's roof is on the plane above it. A floor above that steps back leaves part of
+    // this one exposed, and that part has a roof of its own on plane 1.
+    assert!(roof_planes.contains(&2), "{roof_planes:?}");
+    assert!(roof_planes.is_subset(&[1, 2].into()), "{roof_planes:?}");
     assert!(has_stair_up && has_stair_down);
 
     document
@@ -446,16 +561,103 @@ fn two_floor_building_generates_upper_story_stairs_and_lifted_roof() {
 }
 
 #[test]
+fn legacy_kits_load_but_multiple_floors_require_explicit_stairs() {
+    let mut file = hip_kit();
+    file.version = 1;
+    let json = serde_json::to_string(&file).unwrap_or_else(|e| panic!("{e}"));
+    assert!(!json.contains("stairs"));
+    let loaded: KitFile = serde_json::from_str(&json).unwrap_or_else(|e| panic!("{e}"));
+    let compiled = loaded.compile().unwrap_or_else(|e| panic!("{e}"));
+    let (_, snapshot) = snapshot(16, 12);
+    assert!(compiled.generate(&snapshot, 0).is_ok());
+    let request = BuildingRequest {
+        floors: 2,
+        ..snapshot.request()
+    };
+    assert_eq!(
+        compiled.generate(&snapshot.with_request(request), 0),
+        Err(KitGenerateError::MissingStairs)
+    );
+    file.stairs = Some(KitStairs {
+        up: asset(42, 10),
+        down: asset(43, 10),
+    });
+    assert!(matches!(file.compile(), Err(KitError::Version(1))));
+}
+
+#[test]
+fn explicit_stairs_validate_and_participate_in_dependency_and_stage_queries() {
+    let mut file = hip_kit();
+    file.stairs = Some(KitStairs {
+        up: asset(42, 10),
+        down: asset(43, 11),
+    });
+    let facts = file
+        .footprint_requirements()
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(facts.len(), 2);
+    assert_eq!(
+        facts.iter().map(|f| f.object.get()).collect::<Vec<_>>(),
+        [42, 43]
+    );
+    assert!(facts.iter().all(|f| f.declared_size.is_none()));
+    let compiled = file.compile().unwrap_or_else(|e| panic!("{e}"));
+    let palette = compiled.stairs.unwrap_or_else(|| panic!("stairs"));
+    for stair in [palette.up, palette.down] {
+        let placement = stair.placement(
+            MapTile::new(0, 0),
+            CardinalDirection::East,
+            SourcePlane::new(0).unwrap_or_else(|| panic!("plane")),
+        );
+        assert_eq!(placement.orientation.get(), 2);
+        assert_eq!(
+            compiled.stage_of(&MapOp::AddObject { placement }),
+            BuildingStage::Circulation
+        );
+    }
+    file.stairs
+        .as_mut()
+        .unwrap_or_else(|| panic!("stairs"))
+        .up
+        .kind = 0;
+    assert!(matches!(
+        file.compile(),
+        Err(KitError::Value {
+            what: "stair scenery kind",
+            ..
+        })
+    ));
+    file.stairs
+        .as_mut()
+        .unwrap_or_else(|| panic!("stairs"))
+        .up
+        .kind = 10;
+    file.stairs
+        .as_mut()
+        .unwrap_or_else(|| panic!("stairs"))
+        .down
+        .orientations[0] = 4;
+    assert!(matches!(
+        file.compile(),
+        Err(KitError::Value {
+            what: "orientation",
+            ..
+        })
+    ));
+}
+
+#[test]
 fn a_single_room_request_builds_one_room_with_an_exterior_door_and_undoes_exactly() {
     let kit: KitFile = serde_json::from_str(include_str!(
         "../../../osrs-editor/src/app/prefab_runtime/kits/lumbridge-brick.kit.json"
     ))
-    .unwrap();
-    let kit = kit.compile().unwrap();
+    .unwrap_or_else(|error| panic!("{error:?}"));
+    let kit = kit.compile().unwrap_or_else(|error| panic!("{error:?}"));
     let request = BuildingRequest {
         seed: 5,
-        site: RectSite::new(MapTile::new(3200, 3200), 9, 8).unwrap(),
-        base_plane: SourcePlane::new(0).unwrap(),
+        site: RectSite::new(MapTile::new(3200, 3200), 9, 8)
+            .unwrap_or_else(|| panic!("valid fixture site")),
+        base_plane: SourcePlane::new(0).unwrap_or_else(|| panic!("valid fixture plane")),
         floors: 1,
         archetype: BuildingArchetype::House,
         style: BuildingStyle::Generic,
@@ -472,9 +674,15 @@ fn a_single_room_request_builds_one_room_with_an_exterior_door_and_undoes_exactl
     let mut document = MapDocument::from_parts([], heights, []);
     let before = document.clone();
     let snapshot = crate::capture_generation_snapshot(&document, request, []);
-    let patch = kit.generate_with_rooms(&snapshot, 0, Some(1)).unwrap();
+    let patch = kit
+        .generate_with_rooms(&snapshot, 0, Some(1))
+        .unwrap_or_else(|error| panic!("{error:?}"));
     assert!(patch.ops().iter().any(|op| matches!(op,crate::MapOp::AddObject {placement} if placement.object_id.get()==1535 || placement.object_id.get()==1540)));
-    document.apply_patch(&patch).unwrap();
-    document.apply_patch(&patch.inverse()).unwrap();
+    document
+        .apply_patch(&patch)
+        .unwrap_or_else(|error| panic!("{error:?}"));
+    document
+        .apply_patch(&patch.inverse())
+        .unwrap_or_else(|error| panic!("{error:?}"));
     assert_eq!(document, before);
 }

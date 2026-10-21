@@ -8,6 +8,9 @@
 //! revision or run is discarded. Runtime movement never enters authoring history.
 
 mod files;
+mod geometry;
+pub(in crate::app) use geometry::NpcArtifactIdentity;
+use geometry::NpcRequestIdentity;
 mod import;
 mod navigation;
 mod types;
@@ -31,7 +34,7 @@ use osrs_playtest::runtime::{CLIENT_CYCLE_MS, PlaytestRuntime, RuntimeAssets, Ru
 use osrs_render::SceneGeometry;
 use osrs_world::{
     NpcCatalogEntry,
-    npc::{NpcAssetsUpdate, NpcFrameInput, NpcGeometryUpdate},
+    npc::{NpcAssetsUpdate, NpcGeometryUpdate},
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -62,7 +65,11 @@ struct Live {
 struct SentKey {
     stamp: PlaytestStamp,
     infos_version: u64,
+    presentation_generation: u32,
     camera: (i32, i32),
+    distance_tiles: i32,
+    max_drawn: usize,
+    varps: BTreeMap<VarpId, i32>,
 }
 
 pub(super) struct NpcHost<'a> {
@@ -96,8 +103,9 @@ pub(super) struct NpcRuntime {
     clock: f32,
     queued: Vec<RuntimeCommand>,
     geometry_inflight: Option<PlaytestStamp>,
-    geometry_sent: Option<SentKey>,
+    geometry_sent: Option<Arc<NpcRequestIdentity>>,
     geometry_shown: bool,
+    geometry_pending: Option<NpcGeometryUpdate>,
     stale_rejected: u64,
     diagnostics: Vec<String>,
     pub(super) selection: Option<NpcSpawnId>,
@@ -228,28 +236,6 @@ impl NpcRuntime {
         self.live = None;
     }
 
-    pub(super) fn geometry_arrived(
-        &mut self,
-        update: NpcGeometryUpdate,
-        renderer: &mut RenderRuntime,
-    ) {
-        self.geometry_inflight = None;
-        let Some(live) = &self.live else {
-            self.stale_rejected += 1;
-            return;
-        };
-        if !identity_current(update.stamp.identity, live.sim.identity()) {
-            self.stale_rejected += 1;
-            self.geometry_sent = None;
-            return;
-        }
-        renderer.upload_transient(NPC_KEY, &update.geometry);
-        self.geometry_shown = !update.geometry.zones.is_empty();
-        for error in update.errors.into_iter().take(16) {
-            self.report(error);
-        }
-    }
-
     // ------------------------------------------------------------------ playtest
 
     pub(super) fn queue(&mut self, command: RuntimeCommand) {
@@ -337,6 +323,7 @@ impl NpcRuntime {
             self.rebuild(host, definition, scenario_revision);
         }
         let Some(live) = self.live.as_mut() else {
+            self.hide(host.renderer);
             return false;
         };
         let navigation = WorldNavigation {
@@ -424,75 +411,6 @@ impl NpcRuntime {
             Err(error) => self.report(format!("playtest unavailable: {error}")),
         }
     }
-
-    /// Remove the entity layer from the screen (once).
-    fn hide(&mut self, renderer: &mut RenderRuntime) {
-        if self.geometry_shown {
-            renderer.upload_transient(NPC_KEY, &SceneGeometry::default());
-            self.geometry_shown = false;
-        }
-        self.geometry_sent = None;
-    }
-
-    fn request_geometry(&mut self, host: &mut NpcHost<'_>) {
-        if !host.display.models {
-            self.hide(host.renderer);
-            return;
-        }
-        let Some(live) = &self.live else {
-            return;
-        };
-        if self.geometry_inflight.is_some() {
-            return;
-        }
-        let key = SentKey {
-            stamp: live.sim.snapshot_stamp(),
-            infos_version: host.world.infos_version(),
-            camera: host.camera,
-        };
-        if self.geometry_sent.as_ref() == Some(&key) {
-            return;
-        }
-        let (cx, cy) = host.camera;
-        let radius = i64::from(host.display.distance_tiles);
-        let mut snapshot = live.sim.snapshot_where(|actor| {
-            let dx = i64::from(actor.location.tile.x - cx);
-            let dy = i64::from(actor.location.tile.y - cy);
-            dx * dx + dy * dy <= radius * radius
-        });
-        if snapshot.actors.len() > host.display.max_drawn {
-            snapshot.actors.sort_by_key(|actor| {
-                let dx = i64::from(actor.location.tile.x - cx);
-                let dy = i64::from(actor.location.tile.y - cy);
-                dx * dx + dy * dy
-            });
-            snapshot.actors.truncate(host.display.max_drawn);
-        }
-        let ground_heights = snapshot
-            .actors
-            .iter()
-            .filter_map(|actor| Some((actor.spawn, ground_height(host.world, actor)?)))
-            .collect();
-        self.geometry_inflight = Some(snapshot.stamp);
-        self.geometry_sent = Some(key);
-        host.world.request_npc_geometry(NpcFrameInput {
-            snapshot,
-            ground_heights,
-            varps: host.varps.clone(),
-        });
-    }
-}
-
-/// Terrain height under an actor's simulated position, from the accepted region projection.
-fn ground_height(world: &WorldRuntime, actor: &NpcActorSnapshot) -> Option<i32> {
-    let (x, z) = (actor.position.x.units(), actor.position.z.units());
-    let region = (
-        x.div_euclid(128).div_euclid(64),
-        z.div_euclid(128).div_euclid(64),
-    );
-    let info = world.infos().get(&region)?;
-    let height = info.height_at(usize::from(actor.location.plane.get()), x as f32, z as f32)?;
-    Some(height.round() as i32)
 }
 
 #[cfg(test)]

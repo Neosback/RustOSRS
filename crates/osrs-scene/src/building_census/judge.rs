@@ -31,6 +31,37 @@ pub const FEATURE_NAMES: [&str; FEATURES] = [
 /// How many numbers describe a building.
 pub const FEATURES: usize = 16;
 
+/// The kinds of hard failure [`judge`] reports, in the order they are listed as problems.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum FindingKind {
+    NoRoom,
+    NoEntrance,
+    UnreachableRoom,
+    BlockedDoorway,
+}
+
+impl FindingKind {
+    /// The failure in plain words.
+    pub const fn describe(self) -> &'static str {
+        match self {
+            Self::NoRoom => "no enclosed room",
+            Self::NoEntrance => "no way in",
+            Self::UnreachableRoom => "a room cannot be reached",
+            Self::BlockedDoorway => "furniture blocks a doorway",
+        }
+    }
+}
+
+/// One hard failure and where it is, so a repair can act on that spot instead of the whole
+/// building. `tile` is `None` for a failure of the building as a whole (no room, no way in).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Finding {
+    pub kind: FindingKind,
+    pub plane: u8,
+    /// The first tile of the unreachable room, or the tile of the blocked doorway's wall edge.
+    pub tile: Option<(i32, i32)>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Judgement {
     /// Doors and doorways from outside into the building.
@@ -40,26 +71,18 @@ pub struct Judgement {
     pub rooms_reachable: usize,
     /// Doors and doorways with furniture on either side of them.
     pub blocked_doorways: u32,
+    /// Every hard failure with its location; [`Judgement::problems`] is the plain-words view.
+    pub findings: Vec<Finding>,
     pub features: [f32; FEATURES],
 }
 
 impl Judgement {
-    /// What is wrong with the building, in plain words; empty when it is usable.
+    /// What is wrong with the building, in plain words, once per kind; empty when it is usable.
     pub fn problems(&self) -> Vec<&'static str> {
-        let mut problems = Vec::new();
-        if self.rooms == 0 {
-            problems.push("no enclosed room");
-        }
-        if self.entrances == 0 {
-            problems.push("no way in");
-        }
-        if self.rooms_reachable < self.rooms {
-            problems.push("a room cannot be reached");
-        }
-        if self.blocked_doorways > 0 {
-            problems.push("furniture blocks a doorway");
-        }
-        problems
+        let mut kinds: Vec<FindingKind> = self.findings.iter().map(|f| f.kind).collect();
+        kinds.sort();
+        kinds.dedup();
+        kinds.into_iter().map(FindingKind::describe).collect()
     }
 
     pub fn is_usable(&self) -> bool {
@@ -72,6 +95,12 @@ fn is_gap(feature: EdgeFeature) -> bool {
 }
 
 pub fn judge(building: &Building) -> Judgement {
+    judge_from(building, &[])
+}
+
+/// [`judge`] for a floor people reach by stairs: the rooms holding an `arrivals` tile (where a
+/// stair comes up) count as entered, so the floor needs no door from outside.
+pub fn judge_from(building: &Building, arrivals: &[(i32, i32)]) -> Judgement {
     let room_of: HashMap<(i32, i32), usize> = building
         .rooms
         .iter()
@@ -90,10 +119,14 @@ pub fn judge(building: &Building) -> Judgement {
         x
     }
     let mut entrances = 0_u32;
-    let mut entered: HashSet<usize> = HashSet::new();
+    let mut entered: HashSet<usize> = arrivals
+        .iter()
+        .filter_map(|tile| room_of.get(tile).copied())
+        .collect();
     let mut interior_gaps = 0_u32;
     let (mut exterior_edges, mut windows) = (0_u32, 0_u32);
     let mut blocked = 0_u32;
+    let mut findings = Vec::new();
     let furniture: HashSet<(i32, i32)> = building
         .rooms
         .iter()
@@ -112,6 +145,11 @@ pub fn judge(building: &Building) -> Judgement {
         }
         if furniture.contains(&wall.tile) || furniture.contains(&other) {
             blocked += 1;
+            findings.push(Finding {
+                kind: FindingKind::BlockedDoorway,
+                plane: building.plane,
+                tile: Some(wall.tile),
+            });
         }
         if wall.exterior {
             entrances += 1;
@@ -132,6 +170,29 @@ pub fn judge(building: &Building) -> Judgement {
     let rooms_reachable = (0..rooms)
         .filter(|room| start_roots.contains(&find(&mut parent, *room)))
         .count();
+    if rooms == 0 {
+        findings.push(Finding {
+            kind: FindingKind::NoRoom,
+            plane: building.plane,
+            tile: None,
+        });
+    }
+    if entrances == 0 && entered.is_empty() {
+        findings.push(Finding {
+            kind: FindingKind::NoEntrance,
+            plane: building.plane,
+            tile: None,
+        });
+    }
+    for (index, room) in building.rooms.iter().enumerate() {
+        if !start_roots.contains(&find(&mut parent, index)) {
+            findings.push(Finding {
+                kind: FindingKind::UnreachableRoom,
+                plane: room.plane,
+                tile: room.tiles.first().copied(),
+            });
+        }
+    }
 
     let tiles: usize = building.rooms.iter().map(|r| r.tiles.len()).sum();
     let tiles_f = tiles.max(1) as f32;
@@ -191,6 +252,7 @@ pub fn judge(building: &Building) -> Judgement {
         rooms,
         rooms_reachable,
         blocked_doorways: blocked,
+        findings,
         features,
     }
 }
@@ -300,6 +362,65 @@ mod tests {
         let judgement = judged(&two_rooms(true, false));
         assert_eq!(judgement.rooms_reachable, 1);
         assert_eq!(judgement.problems(), vec!["a room cannot be reached"]);
+    }
+
+    #[test]
+    fn an_unreachable_room_is_located_by_its_first_tile() {
+        let judgement = judged(&two_rooms(true, false));
+        let found: Vec<_> = judgement
+            .findings
+            .iter()
+            .filter(|f| f.kind == FindingKind::UnreachableRoom)
+            .collect();
+        assert_eq!(found.len(), 1);
+        let tile = found[0]
+            .tile
+            .unwrap_or_else(|| unreachable!("a room finding has a tile"));
+        assert!((103..=108).contains(&tile.0) && (103..=105).contains(&tile.1));
+        assert_eq!(found[0].plane, 0);
+    }
+
+    #[test]
+    fn a_blocked_doorway_is_located_at_its_wall_edge() {
+        let mut placements = two_rooms(true, true);
+        placements.push(put(TABLE, 10, 0, (104, 103)));
+        let judgement = judged(&placements);
+        assert_eq!(
+            judgement.findings,
+            vec![Finding {
+                kind: FindingKind::BlockedDoorway,
+                plane: 0,
+                tile: Some((104, 103)),
+            }]
+        );
+    }
+
+    #[test]
+    fn a_usable_building_has_no_findings() {
+        assert!(judged(&two_rooms(true, true)).findings.is_empty());
+    }
+
+    #[test]
+    fn a_floor_reached_by_stairs_needs_no_outside_door() {
+        let placements = two_rooms(false, true);
+        let buildings = analyze(&area(), &placements, &table());
+        assert_eq!(buildings.len(), 1);
+        // Stairs arrive in the first room: both rooms are reachable through the inside door.
+        let arrived = judge_from(&buildings[0], &[(104, 104)]);
+        assert!(arrived.is_usable(), "{:?}", arrived.problems());
+        assert_eq!(arrived.rooms_reachable, 2);
+        // With no arrival, the same floor has no way in.
+        assert!(
+            judge_from(&buildings[0], &[])
+                .problems()
+                .contains(&"no way in")
+        );
+        // An arrival outside every room does not help.
+        assert!(
+            judge_from(&buildings[0], &[(1, 1)])
+                .problems()
+                .contains(&"no way in")
+        );
     }
 
     #[test]

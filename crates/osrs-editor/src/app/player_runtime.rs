@@ -1,9 +1,12 @@
 //! The mock player's model in the world: asks the world worker for the player's geometry (look
 //! and idle animation) and shows it on its own entity layer. The look is the Player panel's
 //! settings; nothing here changes them, the map, or the NPC layer.
+mod artifacts;
 use super::{
     npc_runtime::WorldNavigation, render_runtime::RenderRuntime, world_runtime::WorldRuntime,
 };
+pub(in crate::app) use artifacts::PlayerArtifactIdentity;
+use artifacts::PlayerRequestIdentity;
 use osrs_core::{
     coords::{MapTile, PlaneIndex},
     ids::SequenceId,
@@ -17,9 +20,10 @@ use osrs_playtest::{
 };
 use osrs_render::SceneGeometry;
 use osrs_world::npc::{PlayerFrame, PlayerGeometryUpdate};
+use std::sync::Arc;
 
 /// Renderer key of the player layer (beside the NPC and animated-loc layers).
-const PLAYER_KEY: (i32, i32) = (i32::MIN + 2, i32::MIN + 2);
+pub(in crate::app) const PLAYER_KEY: (i32, i32) = (i32::MIN + 2, i32::MIN + 2);
 /// The standing animation every player starts from (the client's default player idle).
 const IDLE_SEQUENCE: u32 = 808;
 /// Standard walking animation.
@@ -54,6 +58,7 @@ struct SentKey {
     spec: PlayerSpec,
     frame: u64,
     infos_version: u64,
+    presentation_generation: u32,
     pos: (i32, i32),
     rotation: u16,
     sequence: u32,
@@ -63,8 +68,9 @@ struct SentKey {
 pub(super) struct PlayerRuntime {
     token: u64,
     inflight: Option<u64>,
-    sent: Option<SentKey>,
+    sent: Option<Arc<PlayerRequestIdentity>>,
     shown: bool,
+    pending: Option<PlayerGeometryUpdate>,
     cycles: f64,
     error: Option<String>,
     walker: Option<PlayerWalker>,
@@ -101,6 +107,8 @@ impl PlayerRuntime {
             } else {
                 self.walker = Some(PlayerWalker::new(loc));
             }
+            self.sent = None;
+            self.pending = None;
             self.tick_timer = 0.0;
             let (wx, wz) = (x as f32 * 128.0 + 64.0, y as f32 * 128.0 + 64.0);
             self.world_position = Some([wx, 0.0, wz]);
@@ -149,7 +157,9 @@ impl PlayerRuntime {
             renderer.upload_transient(PLAYER_KEY, &SceneGeometry::default());
             self.shown = false;
         }
+        // Keep the FIFO request occupied until it drains, but revoke permission to publish it.
         self.sent = None;
+        self.pending = None;
     }
 
     /// Request a new model when the look, place or animation frame changed. Returns true while the
@@ -166,6 +176,7 @@ impl PlayerRuntime {
             tile: MapTile::new(spec.tile.0, spec.tile.1),
             plane,
         }) else {
+            self.hide(host.renderer);
             return false;
         };
 
@@ -244,11 +255,38 @@ impl PlayerRuntime {
 
         self.cycles += f64::from(host.dt.min(0.25)) / 0.02;
         let pos_i = (wx.round() as i32, wz.round() as i32);
-        let Some(ground) = ground_height(host.world, pos_i.0, pos_i.1, spec.plane) else {
+        let Some(ground) = host.world.actor_ground_sample(pos_i, spec.plane) else {
+            self.hide(host.renderer);
             return true;
         };
-        self.world_position = Some([wx, ground as f32, wz]);
+        self.world_position = Some([wx, ground.height as f32, wz]);
 
+        // stream() precedes settings/pose reconciliation. Never publish against last frame's host.
+        if let Some(update) = self.pending.take() {
+            if let Some(request) = self
+                .sent
+                .as_ref()
+                .filter(|sent| {
+                    sent.key.spec == spec
+                        && sent.key.infos_version == host.world.infos_version()
+                        && host
+                            .world
+                            .is_current_generation(update.context.presentation_generation)
+                        && sent.key.presentation_generation
+                            == update.context.presentation_generation
+                })
+                .cloned()
+            {
+                host.renderer.upload_player(
+                    Arc::new(PlayerArtifactIdentity::new(request, update.context)),
+                    &update.geometry,
+                );
+                self.shown = !update.geometry.zones.is_empty();
+                self.error = update.errors.into_iter().next();
+            } else {
+                self.sent = None;
+            }
+        }
         if self.inflight.is_some() {
             return true;
         }
@@ -256,49 +294,48 @@ impl PlayerRuntime {
         let key = SentKey {
             frame: (self.cycles / CYCLES_PER_REBUILD) as u64,
             infos_version: host.world.infos_version(),
+            presentation_generation: host.world.presentation_generation(),
             spec: spec.clone(),
             pos: pos_i,
             rotation: self.rotation,
             sequence: sequence_id,
         };
-        if self.sent.as_ref() == Some(&key) {
+        if self.sent.as_ref().is_some_and(|sent| sent.key == key) {
             return true;
         }
 
         self.token += 1;
         self.inflight = Some(self.token);
-        self.sent = Some(key);
-        host.world.request_player_geometry(PlayerFrame {
+        let frame = PlayerFrame {
             token: self.token,
             look: spec.look,
             location: walker.location(),
             position: pos_i,
             rotation: self.rotation,
-            ground_height: ground,
+            ground_height: ground.height,
             sequence: Some(SequenceId::new(sequence_id)),
             cycles: self.cycles as u64,
-        });
+        };
+        self.sent = Some(Arc::new(PlayerRequestIdentity {
+            key,
+            frame: frame.clone(),
+            ground: Arc::clone(ground.identity),
+        }));
+        host.world.request_player_geometry(frame);
         true
     }
 
-    pub(super) fn arrived(&mut self, update: PlayerGeometryUpdate, renderer: &mut RenderRuntime) {
+    /// Retire only the matching token; publication waits for current frame inputs in update().
+    pub(super) fn arrived(&mut self, update: PlayerGeometryUpdate) {
         if self.inflight != Some(update.token) {
-            // An answer to a request from before the cache changed.
             return;
         }
         self.inflight = None;
-        renderer.upload_transient(PLAYER_KEY, &update.geometry);
-        self.shown = !update.geometry.zones.is_empty();
-        self.error = update.errors.into_iter().next();
+        if self.sent.is_some() {
+            self.pending = Some(update);
+        }
     }
 }
 
-fn ground_height(world: &WorldRuntime, x: i32, z: i32, plane: u8) -> Option<i32> {
-    let region = (
-        x.div_euclid(128).div_euclid(64),
-        z.div_euclid(128).div_euclid(64),
-    );
-    let info = world.infos().get(&region)?;
-    let height = info.height_at(usize::from(plane), x as f32, z as f32)?;
-    Some(height.round() as i32)
-}
+#[cfg(test)]
+mod tests;

@@ -1,8 +1,1118 @@
 # RustOSRS Development Handoff
 
-Last updated: 2026-10-18
+Last updated: 2026-10-20
 
 Read `AGENTS.md` and `ARCHITECTURE.md` first. `docs/architecture/FEATURE-MAP.md` and `scripts/editor_features.json` locate feature ownership and tests. Live Git state is authoritative for branch/SHA facts; CI claims require actual run evidence.
+
+## Building storeys, Phase 2: per-floor rooms, setbacks, room-aware stairs — 2026-10-20
+
+Local, uncommitted. Plan phase 2. Applies when the layout is `Compact`, the kit has a hip roof and
+rooms are generated (not drawn); pattern-roof kits, `Corridors` and drawn rooms keep the old
+copy-the-ground-floor stacking (`stack_upper_floors`).
+
+- **Own plan per storey** (`BuildingKit::build_storeys`, `building_kit/generate.rs`). An upper
+  floor is laid out in a rectangle on the floor below (`building_kit/floors.rs::upper_site`): the
+  same rectangle, or with 25% odds a rectangular floor steps back 3–4 tiles from one side (design
+  choice; the corpus has no per-floor outlines); over an L/T it is the largest inner rectangle.
+  Rooms come from `upper_floor_program` (bedrooms, guest rooms, offices, storage…) through
+  `plan_compact_layout_for`, then the same walls, facade, windows, furniture as the ground floor
+  (`KitFinish::apply_to_floor`, grading ground-only; `GenerationSnapshot::for_floor` slices the
+  plane's terrain for the sub-site and borrows ground heights). The plan's one exterior door is
+  swapped for the kit's exterior wall because plan validation needs it.
+- **Stairs** (`building_vertical.rs`): `FloorLayout` (tiles, room per tile, keep-clear tiles) and
+  `plan_vertical_connectivity_in_layouts`. A stair and its approach stand in one room on both
+  floors, never on or beside a door, preferring spots against a wall on both floors. Furniture
+  on stair tiles is removed on every floor. `plan_vertical_connectivity` is unchanged for callers.
+- **Roofs:** one hip per exposed level, on the plane above it: the top floor, plus any part of a
+  lower floor that a smaller one leaves open, kept off the upper floor's tiles
+  (`floors::roof_footprint`).
+- **Judge:** `judge_snapshot` (osrs-lab) now also judges upper floors using `judge_from` (rooms
+  holding a down-stair tile count as entered) and reports `stairs do not join the floors` (up
+  stair without a down stair on the same tile above, or either not in a room). Verdict findings
+  carry the plane.
+- **Tests:** strict sweep (8 kinds × 1–3 floors × 5 sizes × 8 seeds) now also judges upper floors;
+  upper floors are subsets of the floor below with different rooms >90% of the time and
+  setbacks within 15–65%; every exposed level is roofed and no roof sits on the floor above;
+  broken/moved/missing stairs and a sealed upper floor are noticed; floors have furniture and
+  windows; floor chooser, stair, snapshot unit tests. `cargo test -p osrs-edit -p osrs-lab
+  -p osrs-scene -p osrs-editor` green, strict clippy, workspace check, guards.
+- **Not done / not verified:** nothing viewed in the editor (stepped roofs against taller walls,
+  hip ring on a 3-tile strip, UNDER_ROOF flags on a setback); the stair kit assets are still
+  ladders; roofs of a setback use the same hip as a top floor (no lean-to against the wall);
+  upper floors are not furnished around the arriving stair beyond clearing its tiles; an upper
+  floor is never an L/T-preserving copy of the lower outline; drawn-room multi-floor is still
+  rejected. A Finder reorganisation of the project folder happened mid-session (it came back
+  intact, same HEAD).
+
+## Building layout, Phase 1: compact rooms, real room counts, L/T outlines — 2026-10-20
+
+Local, uncommitted. Plan phase 1 of `~/.claude/plans/we-need-to-make-ancient-noodle.md`.
+
+- **Default layout changed.** `LayoutStyle::Compact` (new default in `BuildingKit::generate*`) packs
+  rooms with shared walls and no corridor bands: `building_program/compact.rs`
+  (`pack_compact_program`, `plan_compact_layout`, `FootprintShape::{Rect,L,T}`; an L/T is two
+  rectangular wings, each cut straight into rooms) and `building_topology/compact.rs`
+  (`build_compact_building_plan`: one door per spanning-tree link over rooms that touch, preferred
+  program links first, doors off wall corners; one exterior door on the entrance room off its
+  corners). `LayoutStyle::Corridors` keeps the old behaviour via `generate_with_layout`. Drawn
+  rooms (`generate_in_rooms`) and the non-kit `generate_building_patch` are unchanged.
+- **Room counts follow the data.** `building_program/room_count.rs`: `ROOM_COUNT_TABLE` is the
+  distribution of rooms by floor area for the 470 roofed buildings of
+  `osrs-lab/data/real-buildings.json` (66% one room); an osrs-lab test recounts it from the corpus.
+  `archetype_min_rooms` (tavern/bank/church/dungeon 2, castle 3) and at-most-300-tiles-per-room are
+  design constraints, not measurements (corpus rows carry no building kind; the census only
+  recognises rooms up to 500 tiles).
+- **Outline odds** from the corpus: non-rectangular share is 27% at two rooms, 59% at three or
+  more (floor under 90% of its bounding box). Generated: ~0.63 interior doors per room (real
+  0.64), outlines within the test bands. A one-room building is always a rectangle.
+- **Tests:** `building_program::{compact,room_count}` unit tests, topology tests (every compact
+  plan passes `validate_building_plan`, has rooms−1 doors and one way in), and in osrs-lab
+  `generated_layouts_follow_the_real_door_and_outline_statistics`, plus the Phase 0 strict sweep
+  (all 8 kinds × 1–3 floors) and planned-room round-trip, both green on the new layouts. The
+  learned-style test now learns from 9 buildings: compact buildings have few doors, so 3 was too
+  few for the door majority vote.
+- **Not done / not verified:** no visual check in the editor or gallery of L/T roofs and walls
+  (the hip roof dilates any footprint; only structure and the strict judge were tested); no
+  L-shaped single room; no open archways between rooms (all interior links are doors); the
+  `Corridors` style is kept only for comparison and the old tests of it; reproduction
+  bundles saved before this change (e.g. the frozen build-241 ones under `target/verify`) were not
+  re-run; they were made with the corridor layout, so expect their patch digests to differ.
+  Verification: `cargo test -p osrs-edit -p osrs-lab -p osrs-scene -p osrs-editor` green (editor
+  471 passed, 4 ignored), strict clippy on the three library crates, workspace check, guards.
+
+## Building generation correctness, Phase 0 + first fixes — 2026-10-20
+
+Plan: `~/.claude/plans/we-need-to-make-ancient-noodle.md` (buildings end-to-end, local deterministic
+models, hard validators + real-data stats). Local, uncommitted, on top of the foundation below.
+
+- `building_census::Judgement` now carries located `Finding { kind, plane, tile }` (no room, no
+  way in, unreachable room, blocked doorway); `problems()` is derived from it. `osrs_lab::Verdict`
+  exposes them as `findings` (serde-defaulted, old data still loads). This is the input a repair
+  step needs; nothing consumes it for repair yet.
+- `judge_snapshot` judges the **lowest floor** (it used to judge the largest building, which for
+  2+ floors was the upper floor with no outside door, so every multi-floor building read "no way
+  in"). Stairs joining floors are still not checked by the judge.
+- Planner fixes: `pack_fitted_program` drops least-important rooms until the program fits the
+  site (kit path only; layouts that already packed are unchanged). It removed 80 of 960 sweep
+  refusals (`CannotSplitForRoomCount`, e.g. every 14×12 site). `plan_vertical_connectivity_clear_of`
+  keeps stair footprints/approaches off the tiles beside every door/doorway (the kit passes them);
+  it removed all 48 "furniture blocks a doorway" results on 2-floor buildings.
+- New osrs-lab tests: `every_brief_in_the_sweep_builds_and_is_usable` (8 kinds × 1-3 floors × 5
+  sizes × 8 seeds, strict; baseline before the fixes was 456/960 usable) and
+  `every_planned_room_is_detected_as_exactly_its_rectangle` (generator/census agreement for
+  program rooms). `generation_yield_report` (ignored) prints rejections by reason.
+- Known detector quirk, not fixed: a corridor crossing another corridor's wall line reads as a
+  doorway gap to `Edges::close_openings`, so the corridor is cut into small pieces and a room that
+  only touches those pieces becomes a separate one-room "building". Real buildings rarely have
+  crossing corridors; Phase 1 layout should avoid generating them.
+- Verification: `cargo test -p osrs-scene -p osrs-edit -p osrs-lab` green; strict clippy clean on
+  those three crates; `cargo check --workspace --all-targets` clean; `cargo test -p osrs-editor
+  prefab` 82 passed; architecture + feature-index guards pass (Python 3.14). Full gate not run.
+- Not done from Phase 0: the committed real-data distribution table + realism report. Phases 1-5
+  untouched.
+
+## Local AI/procgen correctness foundation — 2026-10-20
+
+Baseline remains `main` at `c4d2c5d235bedcedef7825249833b1ea6dbe9dbd`; changes are local and
+uncommitted. Unrelated samples and `docs/.DS_Store` remain preserved. No branch, worktree, PR or
+publication. Performance work stays paused. The accepted end-to-end plan is recorded at the top
+of `docs/plans/PROCGEN-LEARNING.md`; this checkpoint does **not** complete that plan.
+
+- Building-kit v2 carries explicit optional up/down `KitStairs` assets, validates scenery kinds
+  and orientations, enumerates their source-definition footprint dependencies and classifies them
+  as circulation. Multi-floor requests without stairs reject explicitly; stair realization errors
+  propagate. Existing starter IDs moved from generator code into kit JSON. Their cache evidence
+  identifies ladder/ladder-top assets, not newly certified architectural stairs. Version-1 files
+  remain readable for single-floor generation; v1 cannot carry v2 stair fields. Older multi-floor
+  kits require explicit migration/review. No implicit generator fallback invents assets.
+- `BuildingRoomRole` owns canonical portable labels and explicit census aliases. Drawn room
+  generation preserves guest room, bathroom, church/nave, armory, cell and other supported roles;
+  unknown/general labels require review rather than silently becoming living rooms. Kit finishing
+  validates role keys against the same owner; the existing `role_name` API delegates there.
+- Confirmed scene-slot fixes: optional finishing reserves one wall-decoration slot per source-plane
+  tile across all faces, with windows considered before random wall decor. A new 48×10 full-decoration
+  seed-0 regression failed before this change. Straight-wall matching now reserves fixed corner/
+  pillar anchors and keeps source planes independent; unresolved structural conflicts still reject.
+  Synthetic kit orientation fixtures now use the actual client N/E/S/W mapping. The real mixed-batch
+  reproduction test deliberately introduces a source decoration at a seed-dependent anchor instead
+  of relying on accidental generator defects; both success and rejection still replay independently.
+- Dataset v2 object records gain optional ordered raw model-table evidence (`combined` versus
+  `typed_alternatives`); full-width IDs and duplicates are preserved. Runtime and Python role
+  features use identical model-representation/count channels. This is source table evidence, not
+  discovered semantic multi-placement assemblies. Legacy datasets/models remain usable without it.
+  Training now honors occurrence-level human corrections before definition-wide human labels,
+  respects an explicit empty correction and excludes inferred-only labels from targets. Lab kit
+  object labels retain explicit climb-up/down actions for the configured stair assets.
+- **Verification:** the final stable affected edit/editor/Lab gate passed strict native all-target/
+  all-feature Clippy, architecture/authority/registry guards, Python/source pins/formatting and
+  **828 tests, 0 failed, 4 ignored** in 130.4 s. Report:
+  `target/verify/gates-20261020-100614/report.json`. Strict WASM Clippy for all three packages passed
+  in 75 s. Native/WASM/current binary source identity matched before documentation-only handoff
+  changes: working-tree SHA-256 `2d60fc342863ed417583c11b5ee181099e10dc5fb78c249bcbc36c2712bf9dcf`.
+  The exporter model-table regression separately passes; all 15 Python learning tests pass.
+  Earlier diagnostic/failed runs remain recorded: one changed during documentation edits; a later
+  run exposed invalid synthetic orientations and a test dependent on the fixed decoration bug.
+  Those were repaired without weakening placement validation or changing saved golden artifacts.
+- **Frozen real-cache proof:** two fresh current-binary processes still MATCH the prior successful
+  build-241 bundle's patch `df744cd449bdc5a475efd45d88ae8e5949ed8d10487f4028eb04186fc24a7429`
+  through existing commit/undo/redo verification. Two more agree the prior 48×10 seed-1 rejection
+  now plans successfully. Its preserved rejection bundle correctly exits 1 with `planning outcome`
+  mismatch, expected `rejected`, actual `accepted`; that check is not a new success capture or a
+  commit/undo verification of the wide building. Evidence:
+  `target/verify/procgen-foundation-process-proof.json`. No cache/GPU initialization is involved in
+  these headless checks; no new live visual, all-cache, performance or remote-CI claim.
+- **Next boundary:** reviewed multi-placement assembly discovery/placement and complete catalogue
+  evidence/review lifecycle; trained room inference with abstention and independently reviewed
+  hold-outs; distinct per-floor authored room graphs, openings/landings and definition-aware stair
+  clearance/traversal; learned structural asset binding into WFC and terrain/modular-object autotile
+  integration; per-element diagnostics; certified house/shop/tavern corpus and fixed-seed yield/
+  validity/visual acceptance. Existing authored sketches still reject multiple floors, generated
+  upper stories still reuse ground topology, and the new model-table features are not a trained
+  assembly/room detector. Keep edits behind the canonical gateway and preserve bounded workers.
+
+## Authored document snapshots — 2026-10-20
+
+Baseline remains `main` at `c4d2c5d235bedcedef7825249833b1ea6dbe9dbd`. Changes remain local and
+uncommitted; unrelated sample JSON and `docs/.DS_Store` are preserved. No branch/worktree/publication.
+Performance measurement/optimization remains paused. The full architecture goal remains incomplete.
+
+- Existing EditorSession/EditorDocument now owns an explicit native authored-content snapshot of
+  canonical MapDocument + optional ScenarioDefinition + complete ThemePack. Private wire records
+  compose existing strict map transport, scenario serde/validation and checked deterministic theme
+  ZIP transport. No parallel workspace/coordinate/history model or operation executor. Asset bytes,
+  ordered rules/provenance, scenario metadata/behavior/source/seed, colocated distinct IDs, signed
+  map coordinates and full-width IDs remain exact. New validated ScenarioDocument baseline and
+  WorkspaceDocument composition constructors reuse the existing domains; existing constructor
+  behavior is preserved. Decode creates an isolated fresh session, never a live import/reset.
+- Accepted ADR-0020 and `docs/specs/authored-snapshot.md` freeze v1 wrapper/identity grammar. Separate
+  map/scenario/appearance digests compose one authored digest. Scenario absence differs from present
+  empty data; no spawn-order normalization. Theme identity uses validated definition/asset identities,
+  not ZIP byte layout. Owned wrapper/identity records are closed; nested formats keep canonical
+  decoder policies. Invalid domains, unsupported versions/algorithms, missing/duplicate fields and
+  malformed/mismatched digests fail. The 128 MiB JSON cap is checked before parse/native allocation
+  and after encoding; oversized valid content rejects without truncation. It is not a global memory
+  budget. Theme archives are never extracted or activated; no GPU compilation/render proof.
+- File → Save authored snapshot and `project snapshot PATH` share one ProjectRuntime export slot,
+  outside source-bound project persistence reset. They freeze only at an explicit capture boundary,
+  serialize off the UI thread and use the existing synced create-only staging publisher. Replacement
+  cannot release the outstanding slot or rewrite its frozen contents; completion/disconnection retires
+  once and explicit retry is allowed. No saved revision/path/history/dirty state is changed by capture.
+  `--verify-authored-snapshot FILE` runs before app/GPU/cache initialization and checks all domains,
+  identities and canonical encode/decode round trip. It reports scope/counts, not an executed edit.
+- **Functional evidence:** isolated 25-second build-241 run executed `npc new`, normal `npc place 3
+  3216 3216 0` and `project snapshot ...` through existing product/gateway paths. Its 35,071,318-byte
+  snapshot retains 21,609 map objects, one authored NPC and stock appearance. Three fresh headless
+  processes MATCHed authored digest
+  `09a4573712194f1268beccab7805c83ac2bed95014be5eb3d7b81437029a08a3`.
+  Three more MATCHed the 8,836-byte full-width/Unicode fixture with three behavior variants, ordered
+  rules and one exact binary asset. Independent Python/hashlib/zipfile checks agree on complete
+  scenario, appearance manifest/assets and composite identities for both files. Changed authored
+  digest fails/nonzero; both prior real-cache building success and failure formats still MATCH.
+  Proof: `target/verify/authored-snapshot-process-proof.json`. Existing evidence/expectations are
+  preserved. Automatic functional-run frame statistics are not performance or independent visual proof.
+- **Verification:** ten focused codec/export tests plus the canonical scenario-constructor test pass.
+  Cases cover domain equality, absent/empty scenarios, every behavior/full-width values, ordered
+  content, exact assets, frozen lifetime, undo identity versus increasing observations, corruption/
+  duplicate/schema/domain/hash failures, native file-kind/size guards, bounded export, source/project
+  replacement, saved-state independence, create-only cleanup and disconnected-slot retry. Independent
+  Python vectors pin empty and full-width Unicode scenario hashes plus stock composite identity.
+  Final affected osrs-edit/osrs-editor gate passed strict native all-target/all-feature Clippy,
+  guards/Python/source pins/formatting and **782 tests, 0 failed, 4 pinned-cache tests ignored** in
+  157.3 s: `target/verify/gates-20261020-090750/report.json`. Strict WASM Clippy for both crates passed
+  (30.6 s), with identical native/WASM source before/after:
+  `0acf0243bef66f6967b08caca1a4dcb43cab0fbc6f3167ac7a30efeece95e36a`.
+  `wasm-source.json` records that boundary. Independent hashing of 755 build-input files matches
+  recorded source stamp `c5b6124563febb4465ff0fc6ae3670499360ecba07897e8311ffb8f110e9e974`
+  in `authored-snapshot-source-proof.json`. No dependency/lint/debt allowance or fixture expectation
+  change. Only documentation changed after final gates. Existing prerequisite skips remain; no full
+  workspace/remote CI claim.
+- **Next safe boundary:** consume this authored baseline in deliberately versioned operation
+  envelopes, with independent source/profile/build/project identity, availability and declared
+  deterministic observations. Current snapshots capture all values currently in EditorDocument,
+  not every source region, pending project diff/restoration, history or live actor position/clock.
+  Fresh decode has zero normal counters and empty history/redo/dirty/available observations; it does
+  not restore those lifecycles. Existing building v1 formats remain map-scoped. Keep recovery journal
+  design separate from source-relative project saves and replay; preserve EditRuntime for all actual
+  commits/undo/redo. Projection settling/images, other headless/MCP operations, independent fidelity
+  and global worker/time/byte budgets remain open. Performance stays paused.
+
+## Rejected building reproduction — 2026-10-20
+
+Baseline remains `main` at `c4d2c5d235bedcedef7825249833b1ea6dbe9dbd`. Changes remain local and
+uncommitted; unrelated sample JSON and `docs/.DS_Store` are preserved. No branch/worktree/publication.
+Performance measurement/optimization remains paused. The full architecture goal remains incomplete.
+
+- The canonical product `build/plan.rs::plan` now returns a private typed failure at the actual
+  request/generation/clearing/map-validation/candidate-validation/thumbnail boundary. It retains the
+  original product message and exact opaque lower-owner diagnostic evidence, without parsing display
+  text or inventing another lower-crate error model. Existing success algorithms and error messages
+  remain intact. Exact message/cause equality deliberately detects diagnostic drift across builds;
+  this is conservative reproduction evidence, not stable wording or a global unsatisfiability proof.
+- The existing native worker retains actual rejected seed/forms and shared PreviewInput, as does
+  synchronous planning. No document/kit snapshot per failure. Failure storage is private; UI reads
+  current messages through a narrow source/revision/form/site/plane/definition guard. Stale evidence
+  cannot export even before the next refresh. Mismatched failure payloads cannot publish. Clear and
+  replacement release records; an explicitly frozen export may finish independently through the
+  existing one-slot export/staging owner. Worker scheduling/cancellation policy is unchanged.
+- Save reproduction defaults to the selected success, or first current rejection when no preview is
+  usable. Save report beside each failed seed and `prefab reproduce PATH failure=SEED` capture any
+  retained current rejection, including mixed batches, without replacing the selected success.
+  Source/profile checks, create-only publication, 128 MiB transport cap and canonical input restoration
+  are shared with success capture. Pre-planner kit/plane/admission errors and worker cancellation/
+  panic/disconnection do not become invented planner rejection records.
+- Accepted ADR-0019 and `docs/specs/building-failure-reproduction.md` define the separate
+  `rustosrs-building-failure-v1` envelope/contract. Successful v1 schema/input digest/report remain
+  unchanged. The same headless command dispatches original bytes to each closed decoder, retaining
+  duplicate-key detection. Failure replay invokes the same product planner and requires exact failure
+  plus equal initial/result map hashes. Unexpected success or changed stage/message/cause/map fails.
+  MATCH reports `outcome: rejected`, actual seed/evidence and zero operations, with no patch digest,
+  synthetic transaction, commit/undo/redo or projection. A bundle reproduces one attempt, not a batch.
+- **Functional evidence:** an isolated 25-second native run against the pinned build-241 cache used
+  `prefab build 3258 3216 48 10 1`, then exported rejected seed 1 through the product script action.
+  Its actual rejection is `candidate_validation`, `InvalidTask("scene slot already occupied")`;
+  no assumed missing-height cause was substituted or validation behavior changed. The 35,148,841-byte
+  `target/verify/building-failure-live.json` MATCHed in three fresh native headless processes, with
+  zero operations and unchanged map digest
+  `21f9483fd9ae0679d9a63bbef0eb686f1c1a1207f3e927b1a914d648301f9537`.
+  Three current processes also MATCH the previous successful real-cache bundle with its original
+  patch digest `df744cd449bdc5a475efd45d88ae8e5949ed8d10487f4028eb04186fc24a7429`.
+  A separate changed-cause artifact failed explicitly/nonzero. Proof:
+  `target/verify/building-failure-process-proof.json`. Original evidence/expectations were preserved.
+  Functional-run frame statistics are not performance or independent visual evidence.
+- **Verification:** all 25 focused reproduction/source tests passed, including ten new failure cases:
+  request rejection, all eight wrapping seeds, explicit selector, real mixed batch, actual generation/
+  constraint and candidate-validation failures, stale/frozen lifetime and release, malformed completion,
+  every failure channel/unexpected success/map mismatch, closed/duplicate schema, native publication
+  and legacy dispatch. The empty-map fixture initially expected a later missing-snapshot error;
+  canonical generation actually rejects earlier with InvalidPlan/MissingHeight. The test was corrected
+  to that observed authoritative error; no production validation was weakened.
+  Final focused editor gate passed strict native all-target/all-feature Clippy, guards/Python/source
+  pins/formatting and **461 tests, 0 failed, 4 pinned-cache tests ignored** in 90.5 s:
+  `target/verify/gates-20261020-075716/report.json`. Strict WASM editor Clippy passed (13.7 s).
+  Identical native/WASM source before/after:
+  `4ec79275bac08250b0f0266bdee5bc07a9937c87d1e528613f8f93084d14b18d`;
+  `wasm-source.json` records the boundary. Independent hashing of 750 build-input files matches
+  recorded source stamp `6a54e63553c6ff326d5c1a87099e2513f5cbcf352826809d7613c40a01abc5d0`
+  in `building-failure-source-proof.json`. Only documentation changed after final gates. Existing
+  fixtures, crate dependencies and lint/debt baselines were preserved; no full-workspace/remote CI claim.
+- **Next safe boundary:** inspect canonical EditorDocument/WorkspaceDocument/ScenarioDocument/
+  ThemePack owners and their existing persistence/identity before composing complete frozen workspace
+  evidence. Map-only snapshots/reproduction do not cover appearance/scenario, clocks, availability,
+  projection settling/images or full project recovery. Keep recovery journals distinct from replay
+  and source-relative project saves; no alternate workspace/history/coordinate authority. Other
+  operation contracts/MCP, independent visual fidelity and global worker/time/byte budgets remain
+  open. Building rejection MATCH closes none of those boundaries; performance remains paused.
+
+## Frozen building reproduction and headless verification — 2026-10-20
+
+Baseline remains `main` at `c4d2c5d235bedcedef7825249833b1ea6dbe9dbd`. Changes remain local and
+uncommitted; unrelated sample JSON and `docs/.DS_Store` are preserved. No branch/worktree/publication.
+Performance measurement/optimization remains paused. The full architecture goal remains incomplete.
+
+- `PrefabRuntime::BuildState` now owns explicit native reproduction capture of a current admitted
+  building candidate. Save reproduction in the Build panel and `prefab reproduce PATH` freeze the
+  full signed MapDocument, actual base-request/selected-candidate forms, complete KitFile, canonical
+  footprint facts and source/build context. Serialization/publication runs behind one retained
+  background export slot; later edits cannot rewrite frozen evidence. Existing reports are never
+  replaced: the existing export staging owner syncs staged bytes, atomically hard-links the complete
+  new file and retires staging on success/failure. Unsupported hard-link filesystems fail explicitly.
+- `osrs-editor --reproduce-building BUNDLE.json` runs before app/GPU/cache initialization. The closed
+  v1 envelope checks input integrity, canonical transports/constructors, form/fact consistency and
+  protocol bounds, then invokes the existing `build/plan.rs::plan`. Building/apply/result hashes
+  must match. Isolated commit, undo and redo use the existing EditRuntime gateway and exact map
+  digests. JSON MATCH/FAILED and process status expose the result. No raw-patch executor, parallel
+  planner/history, live import or AI-only mutation route. Accepted ADR-0018 and
+  `docs/specs/building-reproduction.md` define this concrete semantic contract.
+- Source metadata uses full accepted TargetProvenance only through the world owner's current-source
+  gate, plus the opened project profile/build. Project generation starts at 1 and world worker source
+  at 0: these are independent clocks and must never be compared. Preview admission still uses its
+  existing project generation/revision/definition checks; FIFO acceptance policy is unchanged.
+  Build context records a conservative workspace source-tree digest plus compiler/target/profile/
+  feature/flag fields, separately from Git identity and executable provenance. Offline reproduction
+  validates declared source identity, not an external cache's authenticity.
+- Real-cache verification exposed nondeterministic ordered clearing patches from region HashSet
+  traversal. `objects_in_rect` now shares MapDocument's existing `(position, kind, id, orientation)`
+  key; overlap queries inherit that order. Membership, eight-tile halo, footprint/orientation rules,
+  fitting/generation/foundation math and final object sets are unchanged. The original failed bundle
+  and differing pre-fix reports remain under `target/verify`; expectations were not rewritten.
+- **Functional evidence:** an isolated 25-second native run against the pinned build-241 cache
+  generated a real 202-object/196-removal preview without applying it to the live document, then
+  exported a 35,148,846-byte bundle. Three fresh headless processes matched its 505-operation apply
+  patch and result map, including isolated undo/redo. Proof:
+  `target/verify/building-reproduction-live-canonical-proof.json`. Patch digest:
+  `df744cd449bdc5a475efd45d88ae8e5949ed8d10487f4028eb04186fc24a7429`;
+  result: `d5db93650c5c8459933547e1e5f86e8b1fefbcfd7d406177acca1206a612ac6e`.
+  After the final source-watch fix, three current verifier processes still MATCH and honestly report
+  different recorded build context; three old-bundle checks now fail with one stable corrected
+  apply digest. `building-reproduction-current-verifier-proof.json` records both sets. Automatic
+  frame statistics from the functional run are not performance or independent visual evidence.
+- Independent Python hashing caught and corrected a path-order mismatch in the source stamp.
+  Actual Cargo addition/removal of a temporary profile file then proved directory-watch invalidation
+  and exact hash restoration; the probe is removed. `building-build-watch-proof.json` records the
+  proof and current source stamp `3129c59060e991fd063f2c973ea6bd8d45988887260a55ed6b8ed3a973f500e6`.
+  Crates, profiles and .cargo directory roots are all watched. This stamp is not the verification
+  working-tree hash below and is not a complete external toolchain/binary signature.
+- **Verification:** 15 focused reproduction/source-identity tests and the canonical spatial-order
+  test passed. Final affected `osrs-edit`/`osrs-editor` gate passed strict native all-target/all-feature
+  Clippy, guards/Python/source pins/formatting and **761 tests, 0 failed, 4 pinned-cache tests ignored**
+  in 83.7 s: `target/verify/gates-20261020-072444/report.json`. Strict WASM Clippy for both crates
+  passed (68.5 s), with identical source before/after native and WASM:
+  `d762710c82b401ca7a329678c5fbf22f66a1a05b93ceeb2bd0fe719e171dd04f`.
+  `wasm-source.json` records that boundary. Tests cover all five modes/seven stages with genuine
+  missing work, wrapping candidate seeds, negative coordinates, locks/sketch/repair inputs,
+  source-over-declaration sizes, stale/frozen lifetime, malformed/mismatched records, bounded export,
+  create-only cleanup and file-kind/size guards. The incomplete-stage test fixture was corrected;
+  production completion behavior and existing expected fixtures were preserved. Only documentation
+  changed after final gates. Existing prerequisite skips remain; no full-workspace or remote CI claim.
+- **Next safe boundary:** typed failed/unsatisfiable candidate reproduction. Current native batches
+  discard their document/kit after planning and retain failures as display strings prefixed by seed;
+  an all-failed batch has no admitted candidate to capture. Retain explicit frozen failure evidence
+  and attempt identity on the existing owner, with ordinary freshness/cancellation and bounded
+  lifetime. Do not manufacture a successful patch or parse display strings into a new error model.
+  Workspace appearance/scenario, projection/settle/image reproduction, recovery journals, other
+  headless operations/MCP, independent visual fidelity and global worker/time/byte budgets remain
+  open. Semantic MATCH closes none of those boundaries; performance remains paused.
+
+## Lossless semantic map and patch transport — 2026-10-20
+
+Baseline remains `main` at `c4d2c5d235bedcedef7825249833b1ea6dbe9dbd`. All changes remain local
+and uncommitted; unrelated sample JSON and `docs/.DS_Store` are preserved. No branch/worktree/
+publication; performance measurement/optimization remains paused. Previous goal turn made verified
+progress on review freshness, capture work bounds and content digests; this continues reproduction.
+
+- Existing MapDocument/MapPatch gain explicit v1 JSON encode/decode operations in
+  `osrs-edit::semantic_transport`. Private wire records map through canonical constructors; no
+  second document/history/coordinate authority or operation executor. Separate snapshot/patch
+  format headers carry the corresponding canonical algorithm and content digest. Signed i32
+  coordinates/heights, all u32 IDs, nullable channels and source planes remain exact. Snapshot
+  duplicates reject even when equal; sparse default terrain normalizes normally. Missing heights
+  remain absent. Patch ordering/no-ops/before-state/polarity are exact; MapPatch::new derives impact.
+- Closed schemas reject unknown fields/operations, duplicate JSON keys, absent nullable channels,
+  malformed/out-of-range numbers, unsupported formats/algorithms and invalid/mismatched digests.
+  Canonical-value errors retain their snapshot collection/operation index and typed source; duplicate
+  errors retain exact canonical coordinates/occurrences. Decode builds a new value without altering
+  a live session/history/dirty state. Integrity does not imply patch applicability or authorize a
+  live import. No raw data action was added to AI/Lab, and project/export/recovery formats remain
+  separate. Accepted ADR-0017 and `docs/specs/semantic-transport.md` freeze this infrastructure API.
+- Seven tests decode hand-authored full-width/signed snapshots/patches using the independent v1
+  digest vectors; cover canonical re-encoding and default/zero behavior, duplicate collections,
+  all invalid semantic channels and numeric/schema/version/hash failures, including duplicate
+  internally tagged operation keys. Exact decoded patches commit/undo through existing history;
+  an inapplicable decoded patch is still rejected and preserves redo. Initial narrow run passed
+  all seven; final gate also verifies added indexed error chains and duplicate operation-key cases.
+- **Verification:** focused osrs-edit gate passed strict native all-target/all-feature Clippy,
+  architecture/authority/feature-index/Python/source-pin/format checks and **309 tests, 0 failed,
+  0 ignored** in 76.1 s: `target/verify/gates-20261020-032021/report.json`. Strict WASM Clippy for
+  osrs-edit and downstream osrs-editor passed (31.1 s), with the same stable source:
+  `e75a4f2cbc674e9f1a4f14f7589c4c31327c672b7bc651b973036b304b8e699f`.
+  `wasm-source.json` records that boundary. Existing digest/semantic tests and fixtures were not
+  changed; no dependency, lint/debt allowance, gateway or planner-body change. Only documentation
+  changed after gates. Local Markdown targets, the empty-snapshot JSON example and whitespace
+  checked. Existing Python/historical prerequisite skips remain; no full-workspace, remote CI,
+  complete replay/recovery, external visual or performance certification claim.
+- **Next safe boundary:** consume these APIs in a real building reproduction envelope and headless
+  verifier; do not stop at transport or substitute a raw-patch executor for intent reproduction.
+  `prefab_runtime/build/plan.rs::plan` is the canonical product composition: frozen MapDocument,
+  PreviewInput footprint facts, actual candidate BuildForm and actual compiled Kit/KitFile. A batch
+  input retains the base seed while a selected candidate's form can use a wrapping offset seed;
+  capture both honestly. Preserve all modes, sketch, locks, repair region and stage inputs, or reject
+  explicitly unsupported operation contracts. Never silently replay only a default form/kit.
+  `FootprintInputs` is already the canonical source-wins/portable-declaration resolver; serialize
+  its retained facts through narrow operations and validate them against the captured kit/document,
+  rather than constructing a second resolver. Use the full signed transport above, not Lab snapshots.
+- Source provenance needs deliberate capture: ProjectRuntime currently stores build/profile name,
+  not full TargetProvenance. Its source generation is not portable content identity. Accepted region
+  descriptors retain full target identity, but are last-accepted artifacts; do not relabel one as
+  current source without its existing source gate. `WorldDefinitions::context().target_provenance()`
+  supplies actual immutable identity if cache opening is needed; put such work off the UI thread.
+  Freeze current-preview inputs before dispatch; source/document changes later may not rewrite the
+  captured bundle. A new envelope must retain source/profile/build/editor/planner identity and
+  expected canonical patch/result digests, then invoke the existing planner and transaction policy.
+  EditRuntime already has `new(EditorSession)`; production transactions use its execute path, while
+  its convenience `commit` helper is test-only. Avoid direct session/history bypass in a verifier.
+  Retain transport text until strict parsing (generic JSON Value would erase duplicate keys).
+  Recovery journals, other headless/MCP operations, workspace/projection reproduction, independent
+  fidelity and global budgets remain open. Full goal remains active/incomplete; performance paused.
+
+## Versioned canonical map and patch digests — 2026-10-20
+
+Baseline remains `main` at `c4d2c5d235bedcedef7825249833b1ea6dbe9dbd`. All changes remain local
+and uncommitted; unrelated sample JSON and `docs/.DS_Store` are preserved. No branch/worktree/
+publication; performance measurement/optimization remains paused.
+
+- Existing `MapDocument` and `MapPatch` gain explicit read-only `content_digest_v1()` operations in
+  `osrs-edit::content_digest`. They return existing canonical `osrs-core::provenance::Digest256`.
+  SHA-256 uses separate versioned document/patch domains, fixed little-endian widths, explicit
+  optional tags and u64 counts. Map content uses canonical sorted enumeration; patch content keeps
+  exact order/polarity/before/after/no-op operations. No new document/history/hash value model,
+  semantic mutation route, source freshness policy or hashing in frame/commit/undo paths.
+- Full signed world coordinates/heights and all u32 IDs survive. Sparse default terrain remains
+  normalized; unknown heights differ from explicit zero and optional Some(0) differs from None.
+  Source/cache/profile/build, availability, appearance/scenario, invocation/seed/clock, definition
+  and rendering inputs remain separate envelope obligations. This identifies map content, not a
+  complete workspace or portable replay. The explicit v1 APIs/bytes are frozen by accepted ADR-0016
+  and `docs/specs/semantic-digests.md`; future channel/grammar changes need a new version/API.
+- `sha2.workspace` reuses the existing pinned dependency; Cargo.lock changed only the osrs-edit
+  dependency edge (no package/version resolution changes). Four tests pin independent Python
+  struct/hashlib golden vectors for empty and signed/full-width documents/patches, insertion-order/
+  default/object normalization, every map value/coordinate channel, patch order/before-state/no-ops
+  and exact inverse hash restoration. Expectations were not generated from candidate Rust output.
+- **Verification:** focused osrs-edit gate passed strict native all-target/all-feature Clippy,
+  architecture/authority/feature-index/Python/source-pin/format checks and **302 tests, 0 failed,
+  0 ignored** in 64.5 s: `target/verify/gates-20261020-030938/report.json`. Strict WASM Clippy for
+  osrs-edit and downstream osrs-editor passed (40.1 s) with the same stable source:
+  `3c84ca3b9ff04a8976048e6d7419c9592be137105ac375d0593205e1086bad83`.
+  `wasm-source.json` records that boundary. The initial narrow digest run passed all four tests;
+  final gate verifies the explicitly versioned API names. No fixture/lint/debt allowance change.
+  Only documentation changed after final gates; links/whitespace checked. Existing Python/historical
+  prerequisite skips remain. No full-workspace, remote CI, bundle/recovery, visual or performance claim.
+- **Next safe boundary:** lossless versioned map snapshot/patch transport plus one real headless
+  reproduction operation. Keep transport DTOs private, validate through canonical constructors,
+  reject duplicates/unsupported versions, preserve signed world coordinates and optional values,
+  and recompute MapPatch impact. Do not reuse unsigned Lab coordinates or source-relative project
+  diffs as full-world snapshots. Follow with a frozen building input envelope using the actual
+  canonical planner, required definition/kit data, source/profile/build identity and expected patch/
+  result hashes. No UI-driving script or raw-patch executor may masquerade as intent reproduction.
+  Recovery journals, editor-wide headless/MCP, external fidelity and global resource budgets remain
+  open. The full goal remains active and incomplete; performance stays paused.
+
+## Bounded capture analysis and membership work — 2026-10-20
+
+Baseline remains `main` at `c4d2c5d235bedcedef7825249833b1ea6dbe9dbd`; changes remain local
+and uncommitted. Unrelated sample JSON and `docs/.DS_Store` are preserved. No branch/worktree/
+publication; performance measurement/optimization remains paused.
+
+- `CaptureReview` now retains one native worker independently of the current logical analysis job.
+  Initial census/cache analysis and asynchronous membership rebuilds share that owner: one active
+  operation, one replaceable queued closure holding immutable inputs, and capacity-one replies.
+  Clear/cancel retains the draining physical worker. Reselection/replacement releases queued snapshots
+  and unread results immediately, cancels active publication and waits for active work to return
+  before the newest queued operation runs. No census algorithm, definition/name rules, membership
+  math, semantic gateway/history, persisted schema, counter or shared worker framework change.
+- Logical jobs retain semantic revision/source and a weak mailbox link. Source/hydration/eviction
+  changes retire pending work before completion as well as rejecting stale payloads. An obsolete
+  ticket can remove only its own queued closure, including equal-key replacements. Selection errors
+  and disconnection clear refining/open state, eliminating the old permanent analysis spinner.
+  Cancel takes precedence over a simultaneous modal rebuild/save. A panic closes queued senders;
+  explicit reselection can replace a worker only after its thread handle is terminal. No per-frame
+  restart. Shutdown closes slots and lets active cache/analysis work drain without a UI-thread join.
+- Seven deterministic tests pause work using start/release handshakes: 64 replacements, same-thread
+  cancel/reselection, semantic/source retirement, queued/completed input lifetime, obsolete ticket
+  scope, nonjoining shutdown, panic/terminal retry and mismatched payload/errors. Real membership
+  operations pass through production tickets and match canonical results. The narrow capture-filter
+  run passed 24 tests (including unrelated name-matching capture tests); all 11 prefab capture tests
+  passed, preserving the prior four cases. The deliberate panic test emitted its expected panic log.
+- **Verification:** editor focused gate passed strict native all-target/all-feature Clippy,
+  architecture/authority/feature-index/Python/source-pin/format checks and **436 tests, 0 failed,
+  4 pinned-cache tests ignored** in 72.1 s:
+  `target/verify/gates-20261020-030236/report.json`. Strict WASM editor Clippy passed (11.9 s)
+  with the same stable source:
+  `a035872b95241e85da48cfc0863eb5cb194f2b21e28cf0f2baf8e7911ac65725`.
+  Analysis body matches `HEAD` after indentation normalization; membership file is byte-identical.
+  Proof saved with the gate as `unchanged-capture-semantics.json`. No fixture/lint/debt allowance
+  change. Documentation and the prefab registry planner symbol/index were updated afterward;
+  cheap registry/architecture/link/whitespace checks cover that follow-up. Existing skips remain.
+  No full-workspace, remote CI, independent visual, portable reproduction or performance claim.
+- **Next safe boundary:** portable deterministic reproduction, separately from crash recovery.
+  Inspection found ProjectFile v2 stores source-relative diffs without history; Lab replay uses
+  task-local unsigned prefab coordinates and cannot represent the full signed world or editor
+  appearance/session state. Reuse canonical typed map values/constructors and existing planners;
+  do not relabel script text or undo replay as a portable bundle. Establish versioned canonical
+  semantic snapshot/patch identity before recording editor operation contracts, then add a headless
+  verifier. Preserve source/profile/build provenance and fail on mismatched expected hashes.
+  Recovery journals, editor-wide headless/MCP, external fidelity and global worker budgets remain
+  open. Per-owner capture bounds do not prove worst-case analysis/cache time or byte budgets.
+  The full goal remains incomplete; performance stays paused.
+
+## Reviewed placement and capture freshness — 2026-10-20
+
+Baseline remains `main` at `c4d2c5d235bedcedef7825249833b1ea6dbe9dbd`. Changes remain local
+and uncommitted; unrelated sample JSON and `docs/.DS_Store` are preserved. No branch/worktree/
+publication; performance measurement/optimization remains paused.
+
+- Placement review captures semantic `session.revision()` (including hydration/eviction), source
+  generation, the actual operation/asset snapshot, initial global armed gesture, plane, frozen clicked
+  origin and every queried raw definition-size fact. Modal reads and approval recheck these inputs.
+  Unarmed script placement remains valid; moving the mouse does not change a frozen clicked target.
+  Source/catalog arrival, size changes, asset edits/removal and gesture changes revoke approval.
+  Per-frame ghosts borrow the asset and do not create a retained observation map or asset clone.
+- Canonical prefab planning gains fallible entry points; old explicit-size APIs delegate to the same
+  body. Product placement uses known source sizes, then checked captured building sizes, and rejects
+  unresolved scenery dimensions. Structural loc-kind footprints and existing normalization/rotation
+  are shared. Fitted placement validates added scenery sizes even without rotation or neighbors.
+  Conflict validation remains conservative over all existing document objects; a distant unresolved
+  scenery definition can reject fitted placement. Foundation fitting is byte-identical to `HEAD`;
+  no fitting algorithm, persisted schema, fixture or semantic gateway/history change.
+- Capture analysis/admission uses semantic revision. Review selection projection, refinement controls
+  and save reject stale semantic/source inputs, including changes later in the same UI frame. Names,
+  learned suggestions and the analysis object table stay frozen for human review. Actual-session
+  tests prove hydration/eviction reject capture/placement at unchanged authored revision, retain redo,
+  and leave the document unchanged. Current placement commits through EditRuntime with exact undo.
+- **Verification:** focused `osrs-edit`/`osrs-editor` gate passed strict native all-target/all-feature
+  Clippy, architecture/authority/feature-index/Python/source-pin/format checks and **727 tests,
+  0 failed, 4 pinned-cache tests ignored** in 146.6 s:
+  `target/verify/gates-20261020-025408/report.json`. Strict WASM Clippy for both crates passed (30.3 s)
+  with the same stable source:
+  `9416295e5c36d8b7e93f5d9b2fd66a6995fee6e095d721a6d039abfd86a0921f`.
+  The focused semantic prefab run passed all 23 cases. Existing prefab/foundation expectations remain
+  unchanged; new tests exercise missing sizes and script portability. Foundation byte proof is saved
+  alongside the gate as `unchanged-foundation-fit.json`. No lint/debt allowance was widened. Existing
+  prerequisite skips remain; no full-workspace, remote CI, independent visual, portable reproduction
+  or performance certification claim. Only documentation changed afterward.
+- **Next safe boundary:** bound capture analysis and membership-refinement physical concurrency.
+  Both still spawn one thread per request; discarded receivers reject publication but do not bound
+  active snapshots/work. Preserve current census/ownership math and refine/save contracts, retaining
+  one physical owner across cancel/reselection. Then continue portable reproduction/recovery,
+  editor-wide headless/MCP and external fidelity. The full goal remains incomplete.
+
+## Bounded building candidate ownership — 2026-10-20
+
+Baseline remains `main` at `c4d2c5d235bedcedef7825249833b1ea6dbe9dbd`. Changes remain local
+and uncommitted; unrelated sample JSON and `docs/.DS_Store` are preserved. No branch, worktree
+or publication; performance measurement/optimization remains paused.
+
+- `BuildState` retains one native `candidates::Worker` independently of its current logical `Job`.
+  The existing receiver/cancellation ticket remains the admission boundary; the worker owns one
+  replaceable queued document/kit/input snapshot and one active background candidate. Production
+  replies use capacity one. Reroll/source/revision/footprint replacement cancels active work and
+  releases queued snapshots/unread output immediately. Only the active candidate drains before
+  the latest request starts. Eight wrapping seeds, failure order, ranking and canonical planning
+  remain unchanged; no new freshness counter, planner or shared worker framework.
+- Logical tickets hold only a weak queue link and reuse their existing cancellation flag to remove
+  their own queued request. Dropping an obsolete ticket cannot clear a newer equal-input request.
+  Cancellation is checked before and after each candidate. Idle workers retain no document/kit/input
+  snapshot. Owner shutdown closes slots and cancels the active candidate without a UI-thread join.
+  A thread-exit guard closes queued response senders even on panic, preventing forever-pending jobs.
+  The existing no-automatic-retry failure contract remains; reroll/input change can replace a worker
+  only after its thread handle is terminal. Invalid inputs still retire all logical preview state.
+- Explicit synchronous/script planning remains one UI-thread operation, cancelling native tickets
+  but potentially overlapping one already active native candidate. That retired native result cannot
+  replace the synchronous preview, even at an equal request key. This preserves synchronous behavior
+  and avoids blocking UI shutdown; the bound is one native candidate plus at most one synchronous
+  call per owner, not a global worker pool, fit-time limit or worst-case byte budget.
+- Seven new controlled tests pause real planning: 64 reroll/source/revision replacements on one
+  thread, weak queued/completed metadata retirement, invalid-input cancellation, obsolete-ticket
+  scope, nonjoining shutdown, panic/queued-ticket disconnection and terminal retry, wrapping-seed
+  failure/ranking/patch parity, exact patch inverse and synchronous supersession. All **35 prefab
+  runtime tests** passed (0.05 s), including the unchanged prior admission/prefab tests. The native
+  response path preserves controlled completion hooks for stale-batch/current-ticket tests.
+- **Verification:** editor focused gate passed strict native all-target/all-feature Clippy,
+  architecture/authority/feature-index/Python/source-pin/format checks and **424 tests, 0 failed,
+  4 pinned-cache tests ignored** in 33.6 s:
+  `target/verify/gates-20261020-023257/report.json`. Stable source before/after and through strict
+  WASM editor Clippy (11.4 s):
+  `e70506be9303d192ac62c20e64cbd0702f8d5a440f7bb2be5d2517cb64a46c10`.
+  No semantic planner, history/gateway, persistence schema, fixture or lint/debt allowance change.
+  Existing reference-tool/historical-harness skips remain. Only documentation changed afterward;
+  links/whitespace checked. No full-workspace rerun, remote CI, independent visual, portable
+  reproduction or performance certification claim.
+- **Next safe boundary:** close reviewed placement/capture freshness dependencies. Inspection found
+  `prefab_panel/placement_review.rs::approve`, its `viewport.rs::place` constructor, and capture
+  analysis/admission all use authored `map_revision()`, excluding semantic hydration/eviction.
+  Extend existing owners and test with real session hydration/history preservation; inspect fitted
+  placement definition-size and library/intent dependencies before claiming full input closure.
+  Capture analysis also spawns a thread per selection and needs its own physical-concurrency audit.
+  Then continue portable reproduction/recovery, editor-wide headless/MCP and external fidelity.
+  The full goal remains incomplete; performance stays paused. Live goal status is controlled by the
+  app/user, independently of this operational handoff.
+
+## Bounded spline preview ownership — 2026-10-20
+
+Baseline remains `main` at `c4d2c5d235bedcedef7825249833b1ea6dbe9dbd`. All changes are local
+and uncommitted; unrelated sample JSON and `docs/.DS_Store` remain preserved. No branch,
+worktree or publication; performance measurement/optimization remains paused.
+
+- `interaction_runtime/spline/plan/worker.rs` now owns the existing `PlanWorker`: one physical
+  thread, one replaceable pending input and one completed result per interaction runtime.
+  It replaces unbounded request/result channels with narrow owned slots and a condition variable;
+  fitting runs outside the mailbox mutex. Request replacement immediately retires obsolete queued
+  input/completed output. The existing 24 ms debounce and fit/content key remain unchanged.
+- Clear, no-input, cancellation and source replacement clear slots and revoke active output while
+  retaining the draining worker. Resume and rapid source/gesture changes cannot spawn overlapping
+  fits. Exact key roundtrips can accept the already active identical fit and discard redundant
+  pending work. Owner drop clears/closes slots immediately; an active pure fit finishes and exits
+  without joining on the UI thread. Retry requires the actual thread handle to report terminal;
+  a slow observation is never treated as stopped. Browser planning remains synchronous.
+- Seven new deterministic tests gate actual fitting with start/release handshakes: a 255-request
+  replacement burst, inactive-consumer result retention, cancellation/key roundtrips, 63 source
+  replacements while blocked, public cancellation/resume, shutdown/weak mailbox retirement and
+  panic recovery through normal runtime polling. They check the same thread ID across replacement,
+  current-key output and exact canonical fitted tiles/line. The first six and then all seven passed;
+  a potential shutdown assertion race was removed by waiting for channel disconnection rather than
+  assuming destructor order. Existing spline tests were not changed or weakened.
+- **Verification:** the editor focused gate passed strict native all-target/all-feature Clippy,
+  architecture/authority/feature-index/Python/source-pin/format checks and **417 tests, 0 failed,
+  4 pinned-cache tests ignored** in 69.4 s:
+  `target/verify/gates-20261020-021754/report.json`. Stable source before/after and through strict
+  WASM editor Clippy (11.5 s):
+  `431769c28578c80c50bdd6e210e267b779050d09fd1f58d4efc61a8fda621eb8`.
+  The focused spline run passed all **20 tests** (0.13 s). Byte comparisons prove existing
+  `fit_points`, `path_line`, `plan_key`, `PlanInput::make`, spline tests, pointer/commit input and
+  semantic Path gateway bodies remain identical to `HEAD`. No math/planner/history/persistence
+  or lint/debt allowance change. Ordinary reference-tool/historical-harness skips remain.
+  Only documentation changed after the final gates; links/whitespace checked. No full-workspace,
+  independent visual, remote CI, portable reproduction or performance certification claim.
+- **Next safe boundary:** bound physical building candidate concurrency before placement-review
+  dependency/reproduction work. Inspection confirms `build/candidates.rs::Job::start` still spawns
+  a new thread per reroll/source/form input. Drop cancels only between candidates, so at most eight
+  seeds per batch does not bound simultaneous active candidates across rapidly replaced batches.
+  Extend that existing owner, preserving current input/footprint admission and one semantic gateway;
+  do not invent a parallel scheduler. Then continue placement-review inputs, portable reproduction/
+  recovery, editor-wide headless/MCP and external fidelity. Spline retained-work bounds do not prove
+  a worst-case fit-time/byte budget or global worker bounds. The original goal remains active and
+  incomplete; performance stays paused.
+
+## Building definition and footprint inputs — 2026-10-20
+
+Baseline remains `main` at `c4d2c5d235bedcedef7825249833b1ea6dbe9dbd`; all changes are local
+and uncommitted. No branch/worktree/publication, unrelated sample JSON and `docs/.DS_Store`
+preserved, performance measurement/optimization still paused. This checkpoint supersedes the
+building dimension-dependency gap recorded in the previous entry.
+
+- `PreviewInput` now retains immutable footprint facts keyed by canonical object ID and loc kind:
+  optional source dimensions plus optional portable kit furniture declarations. Source dimensions
+  win. Capture covers document scenery and all potential kit scenery assets; current admission
+  rechecks the retained distinct IDs, without cloning a document every frame. Catalog arrival,
+  disappearance or dimension changes revoke apply/save/selection/drawing and supersede in-flight
+  batches even at the same source/session revision. Facts retain no document, catalog or model;
+  existing source generation and semantic revision remain separate, with no new freshness counter.
+- Native and synchronous/browser planning use the same frozen facts. The native worker no longer
+  substitutes label-table sizes or a one-tile guess. Candidate validation uses actual canonical
+  dimensions even for kit-labelled furniture. Portable kit declarations support headless generation;
+  an unknown non-kit footprint needed by clearing or validation rejects planning with an explicit
+  error. Distant unknown objects do not globally reject a build. Capture remains conservative over
+  the whole document's scenery and potential kit assets, so unrelated definition changes may reroll.
+- The existing `osrs-edit` footprint/overlap queries gain fallible entry points; infallible callers
+  delegate to them. Loc-kind rules, rotation, zero-dimension normalization and the existing eight-tile
+  anchor halo are preserved in one implementation. The halo can conservatively require a size even
+  for an object that would ultimately not overlap. This is not a general unbounded-size spatial query.
+  `KitFile::footprint_requirements` enumerates all potential asset fields, deduplicates ID/kind and
+  rejects conflicting normalized furniture declarations. No generator algorithm, history path or
+  persistence schema change.
+- `ObjectCatalog::definition_size` reuses searchable entry dimensions and retains only dimensions
+  for decoded definitions without direct models. Those definitions remain outside placement search;
+  failed decodes remain unknown. `PlaceState::known_object_size` uses this lookup. Catalog unit tests
+  moved to their normal child module unchanged (byte comparison confirmed), with one new dimension
+  test; no test, lint or architecture allowance was weakened.
+- **Verification:** the focused gate for `osrs-edit`, `osrs-world` and `osrs-editor` passed strict
+  native all-target/all-feature Clippy, guards/Python/source pins/formatting and **765 tests,
+  0 failed, 22 ignored** in 276.3 s:
+  `target/verify/gates-20261019-235448/report.json`. Stable source before/after and through the
+  following WASM/cache checks:
+  `8b9dd34be14b1067a9601e0c4f36f97272f5334b6e316248474cc243c1f6b60b`.
+  This includes four additional building regressions and three additional semantic query/kit tests,
+  proving catalog arrival at the same revision, superseded batch metadata release, source sizes over
+  label placeholders, unknown-size rejection, rotated outside-anchor clearing and exact inverse undo.
+  The new kit test initially assumed its stand-in roof assets were structural; explicitly selecting
+  structural kinds in that test corrected the fixture, preserving the existing scenery-kind stand-ins
+  elsewhere. A closure type annotation fixed the other initial test compile error.
+  Strict WASM Clippy for all three affected crates passed (52.4 s). The explicit pinned-cache catalog
+  test passed (0.36 s) with `RUSTOSRS_TARGET_CACHE_DIR=/Users/tylercovalt/RustOSRS-cache/b241/cache`:
+  decoded unlisted definition **66 is 2x2**, matching `WorldDefinitions::object` while remaining absent
+  from search. The ordinary integration run retains its existing unset-environment runtime skip;
+  the separate run actually exercised cache loading. Other prerequisite skips/ignores remain.
+  Only documentation changed after those checks. No full-workspace rerun, remote CI, real-mouse,
+  independent visual, portable reproduction or performance certification claim.
+- **Next safe boundary:** bound the existing spline preview queues while retaining its fit/source
+  keys and commit-time semantic refit, then finish placement-review dependencies and portable
+  reproduction/recovery. Inspection found `interaction_runtime/spline/plan.rs::PlanWorker` uses
+  unbounded request/result channels; requests coalesce only when the worker receives them, so this
+  is not a retained-work bound during an expensive fit. Reuse that worker rather than introducing
+  a parallel scheduler. Editor-wide headless/MCP and external fidelity evidence remain open.
+  The original goal remains active and incomplete; performance stays paused.
+
+## Building preview admission and retained inputs — 2026-10-19
+
+Baseline remains `main` at `c4d2c5d235bedcedef7825249833b1ea6dbe9dbd`, with the earlier local
+checkpoints below. Unrelated sample JSON and `docs/.DS_Store` remain preserved. No branch,
+worktree, commit or publication; performance measurement/optimization remains paused.
+
+- Three regressions reproduced stale publication after invalid kit/plane selection, stale
+  synchronous candidates after invalid inputs, and a disconnected building worker staying pending.
+  `BuildState` now validates desired inputs before polling; invalid kit/plane/site cancels pending
+  work and clears old candidates. Stale batches cannot retire a current job; a matching batch with
+  inconsistent candidates fails closed. Disconnection reports failure and retires the slot without
+  a per-frame retry loop. Reroll or a changed input retries.
+- The existing tuple key becomes retained immutable `PreviewInput`: source generation, semantic
+  session revision, form, site and plane. Jobs, batches and candidates share this descriptor, which
+  retains no document/model/scene; the worker's existing frozen document copy is unchanged.
+  Apply, library save, candidate selection and viewport reads require current
+  inputs, including edits later in the same UI frame. A separate last-preview read supports only
+  read-only post-commit script verification. Synchronous/browser planning reuses the same admission
+  and existing generator; the main BuildState file shrinks from 467 to 359 lines.
+- Building callers now use `session.revision()` because authored-only `map_revision()` excludes
+  hydration/eviction. A real-session test hydrates changed source heights, proves authored revision
+  and undo history stay unchanged, and regenerates at the new semantic revision. This is conservative:
+  unrelated semantic transitions can invalidate a build until narrower dependencies are proven.
+- The preview audit records existing spline fit/source keys, picker-version Reference appearance,
+  commit-time refitting, per-frame object ghosts and cancellation contracts. It corrects the old
+  assertion that commit consumes a ready spline preview. Building catalog/footprint closure, spline
+  queue bounds, placement-review dependencies and portable preview reproduction remain open; no
+  parallel preview framework or new freshness counter was introduced.
+- **Verification:** all eight new admission tests passed, including controlled event order, a real
+  native candidate batch, shared input lifetime and stale-batch/current-slot recovery. The first
+  fixture at origin zero failed generator validation; the existing validated 3300,3300 site then
+  reproduced all three intended failures before the fix. A byte comparison confirms the existing
+  building planning/validation body is unchanged. Final editor gate passed strict all-target/
+  all-feature native Clippy, **406 tests, 0 failed, 4 pinned-cache tests ignored**, and architecture/
+  authority/feature-index/Python/source-pin/format checks in 70.9 s:
+  `target/verify/gates-20261019-233653/report.json`. Stable source before/after:
+  `77ffd589e414db90d8af415437b4288df59e36ff90853561cbcb7a924a9c885b`.
+  Strict WASM editor Clippy passed (11.9 s) after
+  target-gating a return that becomes redundant without native polling; no lint allowance added.
+  Existing reference-tool/historical-harness skips remain. Links/whitespace passed; only
+  documentation changed after the final gates. No full-workspace, real-mouse, independent visual,
+  remote CI, portable reproduction or performance certification claim.
+- **Next safe boundary:** close building definition/footprint input dependencies using the existing
+  catalog/kit ownership, then the remaining preview bounds/review contracts and portable reproduction/
+  recovery. The catalog includes unnamed renderable definitions but omits failed decodes and entries
+  with no direct model table; its size fallback is not proof that an unknown footprint is one tile.
+  Editor-wide headless/MCP and external fidelity evidence remain open. The original goal remains
+  incomplete; performance stays paused.
+
+## Accepted NPC/player extraction identity — 2026-10-19
+
+Baseline remains `main` at `c4d2c5d235bedcedef7825249833b1ea6dbe9dbd`, with the earlier local
+checkpoints below. Unrelated sample JSON and `docs/.DS_Store` remain preserved. No branch,
+worktree, commit or publication; performance measurement/optimization remains paused.
+
+- World actor results now carry canonical decoder target provenance, actual Reference/HD/fallback
+  path and the existing worker presentation generation in `ActorGeometryContext`. Both public Rust
+  result payloads and extraction function signatures are extended; request variants/FIFO order,
+  counters, persistence and pose algorithms remain unchanged. Private `streaming/actors.rs` groups
+  worker actor extraction and shrinks the parent; the canonical render-path selector is reused.
+- New GPU cases reproduced publication after a presentation change with retained picker data.
+  Both owners now require requested, returned and current presentation to match, alongside existing
+  token/stamp and frame reconciliation. Presentation joins the existing request key, allowing a
+  same-tick/frame replacement. Ordinary simulation/pose lag remains accepted.
+- Nonempty GPU actor layers retain immutable issued request metadata and actual extraction context.
+  NPC input includes the original stamp/filter/vars, selected count and accepted ground producers;
+  no full actor snapshots, models, scenes or documents are retained. Player input retains the small
+  exact `PlayerFrame`, key and ground producer. Both previous rounded ground readers now use one
+  borrowed accepted-inspection query; last accepted ground remains allowed during rebuilding.
+  The next pending request never relabels the installed image. Empty output, hide and source cleanup
+  release metadata with GPU data. Existing optional diagnostics observe a borrowed descriptor view.
+- **Verification:** expanded actual-GPU NPC/player cases passed with explicit lifecycle logs,
+  including nonempty NPC ground membership, presentation rejection/recovery, original clock/input
+  retention and weak-handle release on empty/hide. The nonempty NPC fixture initially tripped the
+  existing mixed-cache asset guard; its scenario/assets now use its decoder's real fingerprint,
+  preserving that guard. Pinned-cache `actor_results_capture_real_decoder_target_generation_and_reference_fallback`
+  passed explicitly (0.24 s): exact decoder target/generation/path, real nonempty default-player
+  output and identical geometry between Reference and requested-HD fallback. Command:
+  `RUSTOSRS_TARGET_CACHE_DIR=/Users/tylercovalt/RustOSRS-cache/b241/cache cargo test --locked -p osrs-world
+  --test integration actor_results_capture_real_decoder_target_generation_and_reference_fallback -- --ignored --nocapture`.
+  Final editor/world gate passed strict all-target/all-feature native Clippy (75.8 s),
+  **456 tests, 0 failed, 22 ignored**, and architecture/authority/feature-index/Python/source-pin/
+  format checks in 149.4 s: `target/verify/gates-20261019-231431/report.json`. Stable source hash:
+  `83971fd882452f3fd15f2cc48df626ecdf7ea009431b8d72b3b292194cc91869`.
+  The ordinary gate ignores prerequisite cache/GPU cases; the new pinned test was separately run.
+  Strict WASM editor/world Clippy passed (21.8 s). Existing reference-tool/historical-harness skips
+  remain; links and whitespace passed. Only documentation changed afterward. No full-workspace,
+  independent actor pose/visual parity, remote CI, reproduction or performance certification claim.
+- **Next boundary at that checkpoint:** audit transient previews against their existing desired-key/cancellation
+  owners before adding metadata; then portable reproduction/recovery and editor-wide headless/MCP.
+  External fidelity evidence and the broader target architecture remain open. Performance stays
+  paused; the original goal remains incomplete. The building admission checkpoint above records
+  the first preview audit/fixes and the remaining preview-input obligations.
+
+## Aggregate animated-loc artifact identity — 2026-10-19
+
+Baseline remains `main` at `c4d2c5d235bedcedef7825249833b1ea6dbe9dbd`, with the earlier local
+checkpoints below. Unrelated sample JSON and `docs/.DS_Store` remain preserved. No branch,
+worktree, commit or publication; performance measurement/optimization remains paused.
+
+- The existing single-flight animation request now retains immutable dispatch context: source/
+  presentation, requested cycle/advance, center/radius, smoothing/frozen settings and every nonempty
+  producer's accepted `RegionArtifactIdentity`. Membership shares an immutable map of descriptors;
+  it retains no document, model, scene or GPU resources. Ordinary requests share that map; producer
+  changes preserve older snapshots until their last artifact drops.
+- `WorldRuntime` publishes geometry and identity as one owned `AnimationArtifact`. Nonempty GPU
+  upload retains that same descriptor. No-op completion retires pending context without relabeling
+  the installed picture; empty output and existing shared-batch cleanup remove GPU metadata with
+  resources. The existing optional inspector trace shows dispatch and inspected-region inputs.
+- A new regression first reproduced publication after a smoothing change. Smoothing/freeze
+  changes now revoke the older completion, including toggle roundtrips, and force replacement
+  after the physical FIFO slot drains. Production reconciles playback before polling. Source
+  replacement removes old worker membership before a new-source rebuild. Ordinary clock/camera
+  lag and last accepted producer data during semantic rebuild retain their stale-read policy.
+  No worker message/counter, sequence math, cadence, semantic/history, dependency or allowance change.
+- **Verification:** all 12 targeted animation tests passed, with explicit logs proving all three
+  new actual-GPU paths ran. This includes exact/multiple producer descriptors, replacement/empty
+  membership, snapshot release, no-op retirement, accepted clock lag, settings/source supersession
+  and real frame freeze reconciliation. The first GPU frame test used a synthetic clock ahead of
+  the app clock; its fixture now starts at zero, without changing production timing semantics.
+  Final editor gate passed strict all-target/all-feature native Clippy and **398 tests, 0 failed,
+  4 pinned-cache tests ignored**, plus architecture/authority/feature-index/Python/source-pin/format
+  checks in 34.4 s: `target/verify/gates-20261019-225952/report.json`. Stable before/after source:
+  `13d4088273cb1f30b1e0b42b82fef914c79a3c2f53ec1d9708a799869389f0e8`.
+  Strict WASM editor Clippy passed (21.4 s). Existing reference-tool/historical-harness skips remain;
+  changed links and whitespace passed. Only documentation changed afterward. The prior full
+  workspace result below retains its earlier source scope. No remote CI, independent visual,
+  sequence-math parity, portable reproduction or performance certification is claimed.
+- **Next boundary at that checkpoint:** retain accepted NPC/player extraction identity through their existing
+  transient GPU layer and cleanup operations, using current request keys and frame reconciliation.
+  This is implemented above. Preview identity, portable reproduction/recovery, external fidelity evidence and editor-wide
+  headless/MCP remain open. Performance stays paused; the broader goal remains incomplete.
+
+## Dataset exporter ownership and workspace integration — 2026-10-19
+
+Baseline remains `main` at `c4d2c5d235bedcedef7825249833b1ea6dbe9dbd`, with the earlier local
+checkpoints below. Unrelated sample JSON and `docs/.DS_Store` remain preserved. No branch,
+worktree, commit or publication; performance measurement/optimization remains paused.
+
+- Reproduced E0433 in the world's dataset example: it used canonical
+  `osrs_lab::LearningSplit` outside the world's declared/allowed dependencies. Moved
+  `building_dataset.rs` and its three modules byte-identically to
+  `crates/osrs-editor/examples`, whose existing dependencies support this composition.
+  Removed the old source locations; no wrapper, duplicate split policy, dependency, manifest,
+  lockfile, schema, exporter ID, argument, semantic algorithm or write behavior changed.
+  Reproduction docs now use `cargo run --release -p osrs-editor --example building_dataset --
+  "<OpenRune root>" out/`.
+- Relocation/manifests proof and CLI smoke evidence are in
+  `target/verify/dataset-ownership-nf5jk_pk/{relocation,cli-smoke}.json`. The new command builds
+  and reports the expected missing-root error (exit 1) without arguments. No corpus export was
+  run: the local OpenRune snapshot lacks installed `gamevals.dat` and the LIVE cache required
+  by the exporter. The separate pinned build-241 cache does not supply that installation.
+- The first full integration gate stopped on 31 existing test-only `unwrap` lint violations
+  in five edit/scene files. Replaced them with explicit panic closures, retaining every
+  assertion and expected value; no lint allowances or skips added. The production WFC repair
+  prefix is byte-identical. Proof: `target/verify/dataset-ownership-nf5jk_pk/test-lint-repair.json`.
+- **Verification:** full build stage passed strict native workspace/all-target/all-feature
+  Clippy (114.8 s), strict WASM Clippy (29.9 s), and **1,384 tests, 0 failed, 23 ignored** across
+  23 test executables (604.6 s): `target/verify/gates-20261019-182336/report.json` (749.4 s total).
+  Final full quick stage passed architecture/authority/feature-index/Python/source-pin/format
+  checks in 4.3 s: `target/verify/gates-20261019-183616/report.json`. Both reports have identical,
+  stable before/after source hash
+  `e6927444bae34a44a00791020405364f14c9bdd5b1820108f9531488d6a0b38f`.
+  The existing five absent reference-tool tests and historical harness blob check remain skipped;
+  Rust ignores retain their prerequisite scope. Changed Markdown links and whitespace passed.
+  Only documentation changed afterward. This closes the earlier local all-target source blocker;
+  it makes no remote CI, full-export, independent external visual or performance claim.
+- **Next boundary at that checkpoint:** aggregate animation/transient artifact identity using the existing
+  single-flight owners, retaining ordinary clock lag and existing supersession policy. Portable
+  reproduction/recovery, external fidelity evidence and headless/MCP work remain open; see the
+  technical architecture audit. Aggregate animation is implemented above; the broader goal remains incomplete.
+
+## Accepted static/picker artifact identity — 2026-10-19
+
+Baseline remains `main` at `c4d2c5d235bedcedef7825249833b1ea6dbe9dbd`, with the earlier local
+checkpoints below. Unrelated sample JSON and `docs/.DS_Store` remain preserved. No branch,
+worktree, commit or publication; performance measurement/optimization remains paused.
+
+- The existing FIFO ticket (`RegionBuild`, formerly `PendingBuild`) retains its `BuildStamp` on
+  accepted completion. `RegionGeometry` now carries canonical `TargetProvenance` and actual
+  `TerrainPresentation`; existing `RegionRenderPath` records Reference/HD/fallback. This is a public
+  Rust payload extension, with no request/order, persistence, scene or shader change.
+- After semantic adaptation, private immutable `RegionArtifactIdentity` binds exact source/profile/
+  decoder inputs to the original source instance/request, dispatched revision, producer epoch and
+  presentation generation. It introduces no freshness counter and does not claim a semantic content
+  hash. Unrelated hydration remains allowed; FIFO acceptance/history authority remain unchanged.
+- RenderRuntime retains the shared identity with each uploaded static zone. Partial refreshes retain
+  untouched identities; successful empty zones drop theirs with GPU resources. A proven unchanged
+  Object result may preserve old static identities while replacing complete picker data.
+  `WorldRuntime::region_installed` consumes one accepted owned payload for inspection, dependency
+  stamps, animation membership and statistics. Height/Object stamps use that captured identity.
+- Collision refuses retained inspection from another source/presentation even when source reset
+  reuses producer epoch zero. Existing dirty/in-flight/epoch policy remains. Rejection, terminal
+  failure, source/presentation rebuild and removal retire metadata with projections. The existing
+  optional inspector trace shows last-accepted static and picker identities with wrapping text.
+- Upload/residency operations moved to private `render_runtime/regions.rs`; no EditorApp fields/
+  methods, crate dependencies, architecture allowances or semantic algorithms were added.
+  Standalone RenderSnapshot/SemanticGeneration have a different mesh/hash shape and are not falsely
+  claimed as the active packed/FIFO path. Aggregate animation, actor/preview correlation and portable
+  reproduction identity remain follow-ups; independent roof/raster/texture/visual evidence stays open.
+- **Verification:** three targeted actual-GPU identity tests passed, explicitly logging uploads/
+  removal, after correcting a missing Object-proof setup in the test. Final focused build passed
+  strict all-target/all-feature native editor Clippy and **389 tests, 0 failed, 4 pinned-cache tests
+  ignored** in 73.7 s: `target/verify/gates-20261019-181145/report.json`. Stable source hash:
+  `42f9e09a70159d870a8c9060a643a820d16303664d5add88cd935783d23208b1`.
+  The final suite includes the new retained cross-source/presentation collision case. Strict world
+  `--lib --tests` Clippy passed (10.5 s); strict WASM editor Clippy passed (53.2 s). The pinned-cache
+  `region_artifact_retains_exact_source_and_extraction_inputs` and Reference pixel-golden tests both
+  passed; golden files remain untouched. Architecture/authority/feature-index guards, formatting,
+  changed Markdown links and whitespace checks passed. Only contract/verification docs changed
+  afterward. No full-workspace, remote CI, independent external visual or performance claim.
+- **Next boundary at that checkpoint:** repair the dataset-exporter composition ownership. Its
+  `crates/osrs-world/examples/building_dataset/record.rs` called `osrs_lab::LearningSplit`,
+  outside the world's declared/allowed dependencies. Do not add an upward dependency or widen the
+  guard. This world example was excluded from the focused world Clippy command above, so an
+  all-target world gate was then uncertified. The integration checkpoint above closes that blocker.
+  Aggregate/transient identity and the remaining architecture rollout stay open; performance remains paused.
+
+## Canonical normal parity gate and pinned edge corpus — 2026-10-19
+
+Baseline remains `main` at `c4d2c5d235bedcedef7825249833b1ea6dbe9dbd`, with the earlier local
+projection checkpoints below. Unrelated sample JSON and `docs/.DS_Store` remain preserved. No
+branch, worktree, commit or publication; performance work remains paused.
+
+- The inventory runner now executes `base_normals` and `normal_merge` through the existing
+  `osrs-core::normals` implementation. Their five historical manifests are promoted to semantic
+  execution. The M7 source-immutability/scene tests remain; no normal algorithm was copied or changed.
+  The existing plane adapter moved verbatim to `runner/planes.rs`; the parent shrank from 635 to
+  439 lines without adding dependencies or widening architecture allowances.
+- Added five P1 edge fixtures: mixed signed smooth/flat/suppressed faces, two matching pairs below
+  the hiding threshold, flat-neighbor exclusion, signed XYZ translation and duplicate pair
+  accumulation without welding. Canonical tests require the full 15-fixture inventory, reject
+  evidence-only downgrades, detect corrupt expected values and report malformed model inputs.
+- `scripts/normal_oracle` verifies full external SHA-256 pins, extracts unchanged ModelData
+  base-normal/bounds/merge bodies plus the normal-copy constructor and compiles a storage-only
+  Java shell. Candidate output refuses the accepted tree, symlink aliases and existing directories.
+  The five new manifests pin the complete adapter; historical manual provenance remains intact.
+  Six offline safety tests join the unified quick gate; ordinary CI needs no Java/source checkout.
+- **Verification:** regression first failed all three runner tests on the old bypass/missing
+  executor; the connected runner passed. Final focused build stage passed strict all-target/
+  all-feature native Clippy and **88 tests, 0 failed, 0 ignored** in 49.5 s:
+  `target/verify/gates-20261019-175615/report.json`, stable source hash
+  `14f77269c5bc53dfecba742bf68592193f78f146c0b2b2707120c1eeaa3c1ed4`.
+  The preceding quick stage passed architecture/authority/feature-index/Python checks (including
+  six new safety tests); five absent reference-tool tests and the historical harness blob still
+  skip. Its build stage found test-only `expect` assertions, corrected without lint allowances.
+  Pinned Java replay with JDK **24.0.2**, `--release 17`, matched all **10** normal cases exactly.
+  Formatting, changed Markdown links, verbatim plane-executor comparison and whitespace checks
+  passed. Only verification documentation/wording changed after the final build gate.
+- Scope: isolated numeric normal-method evidence against the declared revision-235 source, not
+  build-241 scene traversal, external visual parity, remote CI or a performance claim. The next
+  grounded rollout boundary is world-to-render artifact identity. Broader roof/raster/texture and
+  independent visual evidence remain open; see the technical architecture audit checkpoint 5.
+
+## Terminal region cleanup and retry policy — 2026-10-19
+
+Baseline remains `main` at `c4d2c5d235bedcedef7825249833b1ea6dbe9dbd`, with the preceding local
+checkpoints below. Unrelated sample JSON and `docs/.DS_Store` remain preserved. No pull, branch,
+worktree or publication; performance work remains paused.
+
+- Current Empty/Failed now pass the existing FIFO/epoch/presentation gate and share the semantic-
+  rejection cleanup. The private operation is named `WorldRuntime::region_unavailable`; the old
+  partial `region_absent` path is removed. Full and scoped terminal outcomes hide the entire producer,
+  remove picker/collision/outlines, animation membership and dependency/Object proofs/comparisons,
+  clear selection, and hide the shared animated GPU batch until surviving membership rebuilds.
+- Empty means absent producer source, even for a scoped request; zero-triangle successful Region
+  output keeps its existing scoped behavior. Empty stays quiet; Failed reports coordinate/error.
+  Empty no longer unloads clean semantic documents. Neither result modifies session/history/
+  revisions/dirty state or consumes pending project diffs. Distance eviction and source replacement
+  keep their existing independent semantic residency rules.
+- Unavailable residency prevents per-frame loops. Existing rebuild/source replacement/eviction/
+  re-entry/new semantic invalidation can retry; later zone edits request full recovery. Stale events
+  retire only their own FIFO ticket and cannot clear newer projections, requests, dirty obligations,
+  selection or notices. No worker protocol, public API or persistence format changed.
+- New actual-GPU tests cover Empty/Failed × full/scoped × clean/dirty sessions, geometry outside
+  scoped output, successful zero-triangle scoped output preserving other zones, pending project
+  restoration only after valid recovery, obsolete presentation/epoch completions and results with
+  no outstanding ticket. The existing collision test now expects Unavailable after a
+  scoped terminal failure and Full recovery after a later edit. Shared lifecycle/proof/outline/
+  animation tests continue to exercise the single removal operation.
+- **Verification:** the two focused terminal tests passed and explicitly logged actual GPU
+  upload/removal paths. Final focused native gate passed strict all-target/all-feature Clippy and
+  **385 tests, 0 failed, 4 pinned-cache tests ignored** in 61.0 s:
+  `target/verify/gates-20261019-173825/report.json`. Before/after source hash was stable:
+  `e112c3a9eb2474fea0baafcc8538e7dc904b26088e334799ac70fee59b43a60b`.
+  Strict WASM editor Clippy passed (39.5 s); architecture/authority/feature-index guards, formatting,
+  changed Markdown links and whitespace checks passed. Only verification documentation changed
+  afterward. No full-workspace, real-mouse, remote CI or independent visual/performance claim.
+- Next rollout phase: select a grounded fidelity-fixture/oracle checkpoint. Independent visual parity
+  and integrated world-to-render identity remain open; performance stays paused.
+
+## Actor completion supersession — 2026-10-19
+
+Baseline remains `main` at `c4d2c5d235bedcedef7825249833b1ea6dbe9dbd`, with the preceding local
+checkpoints below. Unrelated sample JSON and `docs/.DS_Store` are preserved. No pull, branch,
+worktree or publication; performance work remains paused.
+
+- Inspection found that player hide/teleport could leave a completion eligible to restore old
+  geometry, while NPC arrival cleared the in-flight slot before matching the issued stamp.
+  Both owners now stage matching arrivals until `update()` reconciles actual current-frame inputs.
+- NPC acceptance checks exact issued stamp before slot retirement, then current source/map/scenario/
+  run, accepted ground version, camera, range, draw limit and vars before publication. Player checks
+  its issued token, current spec/look and accepted ground version; explicit teleport revokes output.
+  Stale completions cannot install diagnostics or retire a newer request.
+- Hide clears staged output and publication permission while retaining the physical FIFO request
+  until it drains. Hide/show cannot issue indistinguishable requests for the same NPC tick. Ordinary
+  requested animation/tick lag remains allowed; no simulation cadence, worker protocol, history or
+  project format changes. NPC geometry lifecycle moved into private `npc_runtime/geometry.rs` to
+  stay within the existing production file cap; no allowance widened.
+- Four new tests exercise stale-slot retirement and actual arrival/update GPU paths, including
+  hiding installed layers, source/semantic/restart/extraction-input supersession, replacement
+  recovery and accepted animation lag. Synthetic payloads prove installation policy, not model parity.
+- **Verification:** first targeted run passed 63 matching owner tests and explicitly logged both
+  actual GPU lifecycle paths. Final focused native gate passed strict all-target/all-feature Clippy
+  and **383 tests, 0 failed, 4 pinned-cache tests ignored** in 63.3 s:
+  `target/verify/gates-20261019-111302/report.json`. Before/after source hash was stable:
+  `4fb6198fcfab454c2a57c73a6fc88ca5bd7118fb4e07efa83d37763a35041d0f`.
+  Strict WASM editor Clippy passed (10.9 s), as did formatting, architecture/authority/feature-index
+  guards, changed Markdown links and whitespace checks. Only verification documentation changed
+  afterward. No full-workspace, real-mouse, remote CI or independent visual/performance claim.
+- At this checkpoint, terminal Empty/Failed policy was next; it is implemented above.
+  Integrated artifact identity and independent visual evidence remain open.
+
+## Projection contracts and required-work retention — 2026-10-19
+
+Baseline remains `main` at `c4d2c5d235bedcedef7825249833b1ea6dbe9dbd`, on top of the local candidate-
+rejection checkpoint below. Existing changes and unrelated sample JSON/`docs/.DS_Store` remain in
+place. No pull, branch, worktree or publication; performance measurement/optimization remains paused.
+
+- [Active projection contracts](docs/architecture/PROJECTION-CONTRACTS.md) inventory the installed
+  map/viewport artifact families, impact consumers, identities, dependency expansion, stale-read and
+  failure policies, executable evidence and remaining gaps. In particular, last accepted picker/
+  visual data is not proof of current collision; FIFO identity is not out-of-order-worker support.
+- New production-owner tests reproduced two bugs before the fixes: normal region replacement could
+  publish an older aggregate animation completion, and a superseded scoped build could lose the
+  required zones taken from its dirty queue at dispatch. Dirty region/zone obligations now survive
+  in-flight work and are retired only by a current terminal completion. A later edit invalidates an
+  in-flight full build even when its full obligation already subsumes the new zone footprint.
+- The existing animation discard flag now covers replacement, presentation rebuild and eviction as
+  well as semantic rejection. A full rebuild clears the shared animated GPU batch immediately.
+  Existing FIFO protocol, conservative fallbacks, semantic authority/history and scheduling priorities
+  are preserved. No new framework/token or performance claim; no architecture allowance widened.
+- Added live collision failure/recovery, coalescing/full-subsumption, superseded-area retention,
+  unrelated-hydration revision and animation lifecycle regressions. The existing headless GPU test
+  additionally checks presentation rebuild clears both static and aggregate animated geometry.
+- **Verification:** the new contract suite first reproduced both defects (3 passed, 2 failed), then
+  all six targeted contract tests passed after the fixes. Final focused build gate passed native
+  all-target/all-feature Clippy and **379 tests, 0 failed, 4 ignored** (pinned-cache prerequisites):
+  `target/verify/gates-20261019-110314/report.json`, stable before/after source hash, 66.2 s. GPU logs
+  explicitly confirm both semantic rejection and full presentation rebuild removed their layers.
+  Strict WASM editor Clippy, formatting, architecture/authority/feature-index guards and changed
+  Markdown links also passed. Only verification documentation changed afterward. No full-workspace,
+  real-mouse, remote CI or independent visual/parity/performance certification is claimed.
+- At this checkpoint, actor arrival/hide/tick supersession and terminal worker-failure cleanup were
+  follow-ups. The actor boundary is implemented above; terminal policy and the later rollout remain open.
+
+## Semantic region candidate rejection and technical audit — 2026-10-19
+
+Baseline: `main` at `c4d2c5d235bedcedef7825249833b1ea6dbe9dbd`; local changes on that baseline.
+No pull, branch, worktree or publication. Pre-existing `docs/.DS_Store` and unrelated untracked
+sample-data JSON files are outside this checkpoint.
+
+- `streaming/region_install.rs` retires FIFO tickets and applies existing freshness gates before
+  semantic adaptation. Failed adaptation cannot hydrate semantics, consume Object comparison scope,
+  install candidate outputs, or apply/consume pending project diffs.
+- World-owned rejection clears the whole region's picker/outlines, animation membership, dependency
+  and Object proof state. Static render zones are removed for both full and scoped failure. The
+  shared animated batch is hidden temporarily; any old in-flight batch is discarded before a forced
+  rebuild of surviving regions. Semantic session, history/revisions and dirty state stay intact.
+- An unavailable marker suppresses per-frame retry. Rebuild/source replacement, eviction/re-entry,
+  or subsequent semantic invalidation permits retry. Zone invalidation over an unavailable region
+  escalates to full recovery. Animation scheduling moved to a private runtime module to keep the
+  parent below its 500-line cap; no public protocol or persistence shape changed.
+- [Technical audit and rollout](docs/architecture/TECHNICAL-ARCHITECTURE-AUDIT.md) records existing
+  foundations and remaining boundaries. Replay design/navigation now match completed descriptor
+  routing and removal of duplicate chronology. Historical replay-routing claims below are superseded.
+- Verification also exposed pre-existing dead code from the completed history cleanup and the
+  previously recorded WASM building-tool errors. Unused getters/loc-mirror code were removed,
+  the footprint fixture constructor is test-only, and native-only candidate/capture/policy-replay
+  paths are now target-gated. The browser size-map collection has an explicit type; native behavior
+  is unchanged. No lint/debt allowance was widened.
+- **Verification:** Python quick checks, architecture/authority/feature-index guards and formatting
+  passed (the existing five missing reference-tool tests and deob harness-blob check still skip).
+  Final `verify.py -p osrs-editor --stage build` passed strict native all-target/all-feature Clippy
+  and **373 tests, 0 failed, 4 ignored**; the ignored tests require the pinned cache. Report:
+  `target/verify/gates-20261019-093734/report.json` (stable source before/after, 68.9 s).
+  The GPU regression actually exercised full/scoped static and animated removal, rather than taking
+  its unavailable-adapter branch. `cargo clippy --locked --target wasm32-unknown-unknown
+  -p osrs-editor -- -D warnings` passed too. These checks cover the final production/test sources;
+  only verification documentation was updated afterward. No full-workspace sweep, real-mouse
+  smoke, remote CI or independent visual parity is claimed.
+- Later rollout phases are follow-up boundaries, not completed work. Performance remains paused.
 
 ## Lighter CI and local gate — 2026-10-19
 
@@ -396,7 +1506,7 @@ registry for ownership/tests.
 - **Roofs above the viewed plane** (research in `docs/research/RUNELITE-DEOB-FINDS-2026-10-18.md`). `osrs-scene::roofs` labels connected `UNDER_ROOF` tiles (setting bit 4) per plane (eight neighbours, the one-tile overhang joins, ids from the component's south-west-most world tile). `osrs-world` buckets geometry by roof id the way RuneLite's `SceneUploader` does (`roofs[plane - 1]` of the tile; reference, HD and animated paths; `ZoneGroup.roof`, `ZoneGeometry::group_roof_mut`). `osrs-render::gpu::RoofView { top_plane, hidden }` replaces every `min_plane <= view_plane` test (`SceneRenderer::set_roof_view`). Editor: setting `roofs` = Hidden (old behaviour) / Visible / **Cutaway** (default: the roof over the camera, the orbit pivot, the hovered tile and the selection goes), Settings > World and a toolbar button; `app/roof_view.rs` computes the hidden ids per frame. Picking and editing still use the viewed plane. Generated buildings now set `UNDER_ROOF` on their floors (`building_finish.rs`). Verified by screenshot at plane 0 in all three modes and with a selected tavern (its roof goes, the neighbour's stays). **Not done**: RuneLite's `overrides.jsonc` regions, roofs larger than the 145-tile labelling window, per-object roof visibility for picking, a unit test over a real `WorldScene`.
 - **Found and fixed**: `osrs-world/src/hd/extract.rs` used `TILE_FLAG_VIS_BELOW = 4` (that is `UNDER_ROOF`); the client, RuneLite and `terrain_build` use `8`. World tests pass; the HD terrain output for roofed tiles may differ from before (no HD pixel oracle covered it).
 - **Prefab gallery** (`app/prefab_gallery.rs`, `prefab_gallery/{stage,list}.rs`; Library page button "Open the 3D gallery", script `prefab gallery [name] [render]`). A window with a filterable, sortable card list (search, source, tag, sort) and a 3D view of the selected prefab with the real renderer: roofs hidden/visible, floor picker, turn left/right, turntable, orbit/pan/zoom. The view is a **stage**: a second isolated `EditorApp` (own world, document, history, renderer; shares the GPU device, like the export review) on the empty nine-square block of the cache around map square (50, 33), tile (3232, 2144); it lays a grass floor (underlay 50) once, places the prefab through `plan_place_prefab` + `commit_map_patch`, and undoes it for the next selection. Stills: the first time a prefab is settled on the stage (turned 0) a 320x240 still is rendered (`SceneRenderer::render_to_rgba`) and used on its card and in the Library list; "Render N preview(s)" cycles through the rest. Native only (the browser build shows a message). Memory/CPU: a second streaming world while the window is open (closing frees it). **Not verified**: real-mouse orbit/zoom in the gallery, a prefab wider than the 3x3 empty block, HD profile on the stage, stills of prefabs whose objects have not loaded their models yet (45 frames and no build in flight is the settle rule), stage colours (the floor reads mustard; ground blending at the pad edge).
-- **Procgen learning** (`docs/plans/PROCGEN-LEARNING.md`): what the WFC cannot see, a label taxonomy, phases. `osrs-world/examples/building_dataset.rs` exports every real building (rooms with tags, furniture, decoration, wall edges, roof, ring, 117HD area names via `AREAS=`) to JSONL: 3,944 buildings, 35,350 objects, 1,888 inside a named area. Measured: of 21 buildings inside a 117HD bank area only 9 have a census `bank` room; of 9 church areas 3 have a `church` room.
+- **Procgen learning** (`docs/plans/PROCGEN-LEARNING.md`): what the WFC cannot see, a label taxonomy, phases. `osrs-editor/examples/building_dataset.rs` (moved from world on 2026-10-19) exports every real building (rooms with tags, furniture, decoration, wall edges, roof, ring, 117HD area names via `AREAS=`) to JSONL: 3,944 buildings, 35,350 objects, 1,888 inside a named area. Measured: of 21 buildings inside a 117HD bank area only 9 have a census `bank` room; of 9 church areas 3 have a `church` room.
 - Local gates: see the commit messages for the run; this section is updated if they change.
 
 ## Building ghost, overlap clearing and the Auto flyout (2026-10-18)
@@ -563,7 +1673,7 @@ Do not describe this program as complete merely because its foundations or self-
 
 `MapDocument` / `EditorSession` remains authoritative. All existing semantic tool commits and history replay still pass through `EditRuntime`. Native export/inspection remains isolated. Worker mirrors, previews, CPU picking, dependency snapshots and GPU resources are disposable projections.
 
-`TerrainController` is temporary preview/history-routing state, not a second semantic history. Remove it once workers consume semantic snapshots and session history provides replay projection footprints. Small editor planner import adapters contain only DTO conversion/re-exports. Existing broad application orchestration methods are enumerated in the ratchet; future extraction must lower it.
+`TerrainController` is temporary preview/projection state, not a second semantic history. Descriptor-driven replay and removal of the chronological routing stacks are complete. Remove the remaining adapter once workers consume semantic snapshots and preview/source-height compatibility has a proven replacement. Small editor planner import adapters contain only DTO conversion/re-exports. Existing broad application orchestration methods are enumerated in the ratchet; future extraction must lower it.
 
 ## Validation
 

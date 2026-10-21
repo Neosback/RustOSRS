@@ -77,6 +77,21 @@ impl EditorApp {
             ui.close();
             let _ = self.save_project(true);
         }
+        if ui.add_enabled(
+            cache_open && !self.project.authored_snapshot_running() && self.prefabs.stage_region.is_none(),
+            egui::Button::new("Save authored snapshot…"),
+        ).on_hover_text("Capture the current map, NPC scenario and appearance in a new file; this does not mark the project saved")
+            .clicked()
+        {
+            ui.close();
+            if let Some(path) = rfd::FileDialog::new().set_file_name("authored-snapshot.json").save_file() {
+                let message = match self.project.start_authored_snapshot(path, &self.session) {
+                    Ok(()) => "Saving authored snapshot…".into(),
+                    Err(error) => error,
+                };
+                self.ui.notify(message);
+            }
+        }
     }
 
     /// The Save shortcut.
@@ -115,12 +130,20 @@ impl EditorApp {
         self.ui.notify("Saving project...".to_owned());
     }
 
-    /// `project save|open PATH` from the script language (no dialogs).
+    /// `project save|open|snapshot PATH` from the script language (no dialogs).
     pub(super) fn script_project(&mut self, action: &str, path: &str) -> Result<String, String> {
         if self.project.cache_build().is_none() {
             return Err("project needs an open cache".to_owned());
         }
         match action {
+            "snapshot" => {
+                if path.trim().is_empty() {
+                    return Err("An authored snapshot destination is missing".into());
+                }
+                self.project
+                    .start_authored_snapshot(PathBuf::from(path), &self.session)?;
+                Ok(format!("Saving authored snapshot to {path}"))
+            }
             "save" if !self.project.save_running() => {
                 self.start_save(PathBuf::from(path));
                 Ok(format!("Saving project to {path}"))
@@ -281,6 +304,13 @@ impl EditorApp {
 
     /// Report a finished save once per frame.
     pub(super) fn poll_project(&mut self) {
+        if let Some(result) = self.project.poll_authored_snapshot() {
+            let message = match result {
+                Ok(path) => format!("Saved authored snapshot: {}", path.display()),
+                Err(error) => format!("Authored snapshot failed: {error}"),
+            };
+            self.ui.notify(message);
+        }
         let Some(result) = self.project.poll_save() else {
             return;
         };

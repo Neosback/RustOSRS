@@ -483,6 +483,8 @@ LOCATIONS        -> object/scene projection
 BOUNDS           -> bounds/spatial metadata
 ```
 
+[Active projection contracts](docs/architecture/PROJECTION-CONTRACTS.md) document the implemented artifact lifecycles, proof/fallback rules, stale-read policies and remaining acceptance gaps.
+
 ### Async stale-result rule
 
 Every asynchronous build carries at least:
@@ -552,6 +554,42 @@ Renderer rules:
 4. Shader/material features remain isolated from editor transaction logic.
 5. Keep 117HD behavior behind its subsystem boundaries and document required adapter changes. Work on `main` unless the user explicitly asks for a branch.
 
+Active streamed installation retains the accepted FIFO build stamp with the payload's canonical
+source provenance and actual extraction settings/path. Newly uploaded static zones and full picker
+information share immutable `RegionArtifactIdentity`; untouched zones retain their prior build
+identity through scoped refreshes. World-owned installation consumes one accepted projection payload
+for inspection, dependency proofs, animation membership and statistics. Neither identity nor draw
+submission reads mutable semantic authority. Dispatched revision is observation, not a content hash;
+see the [projection contracts](docs/architecture/PROJECTION-CONTRACTS.md) for transient/preview gaps.
+
+The aggregate animated-loc path retains those accepted producer descriptors plus dispatch context
+alongside its existing single-flight request. Geometry and identity publish together; no-op results
+drain pending context without relabeling the installed image. Empty output and shared-batch cleanup
+retire GPU metadata. Ordinary animation lag remains allowed; no extra generation protocol is implied.
+
+NPC/player results carry actual decoder target, extraction path and presentation generation from the
+world worker. Accepted actor GPU layers retain issued request/ground-producer descriptors, without
+retaining scenes or full NPC snapshots. Existing token/stamp and frame reconciliation also require
+requested/actual/current presentation to agree. Empty output and source/hide cleanup retire metadata;
+ordinary actor clock lag remains allowed. Diagnostics borrow installed descriptors and never gate them.
+
+Building request inputs retain definition-size facts alongside source/session/form/site identity.
+Known source dimensions override portable kit furniture declarations; unresolved required scenery
+prevents planning. Catalog arrival or changed dimensions revoke apply/save/selection/drawing admission
+at the same semantic revision. The existing semantic footprint query owns loc-kind and rotation rules;
+no preview document, model, history, persistence format or new freshness counter is introduced.
+
+Spline fitting retains one physical worker and one replaceable pending input/completed result per
+interaction runtime. Cancellation and source replacement clear owned slots and revoke active output
+while the same thread drains; only a terminal worker may be replaced. Commit still fits placed
+points against current semantic state. This bounds retained work, not worst-case fit time or bytes.
+
+Building batches likewise retain one native worker per building owner, one replaceable queued
+snapshot and a bounded logical response. Ticket cancellation releases queued data and lets only
+the active native candidate drain; a terminal thread is required before replacement. Explicit
+synchronous script generation can overlap that one draining native candidate. Global budgets remain
+separate from these per-owner bounds.
+
 ## 14. Cache decoding, encoding, and losslessness
 
 The cache system should support strong round-trip guarantees, but byte-for-byte preservation must be claimed precisely.
@@ -598,6 +636,44 @@ Error rules:
 - adapter errors add context at the boundary
 - avoid stringly typed control flow
 - never silently swallow a semantic/projection mismatch
+
+Canonical map and ordered-patch content identity is owned by `osrs-edit` on `MapDocument` and
+`MapPatch`, using the existing `osrs-core::Digest256`. The explicit v1 read-only operations and fixed
+byte grammar are defined by [ADR-0016](docs/adr/ADR-0016-canonical-semantic-content-identity.md) and
+[the digest contract](docs/specs/semantic-digests.md). Session/source revisions continue to govern
+freshness; a content hash is not an admission policy. Source/profile/build, region availability,
+appearance/scenario and invocation context remain separate reproduction inputs. No hashing is added
+to commit, undo or frame loops. Feature reproduction and recovery journals remain separate concerns.
+
+Lossless map/patch JSON transport is likewise owned by the canonical osrs-edit types under
+[ADR-0017](docs/adr/ADR-0017-semantic-map-transport.md). Private wire records validate through semantic
+constructors, reject snapshot duplicates/unknown data and verify the corresponding canonical digest.
+Patch order/before-state/no-ops remain exact and impact is recomputed. Decoding constructs data only;
+live application still uses EditRuntime. These explicit infrastructure snapshots do not replace
+project/export/recovery formats or expose raw writes to agents. See [the transport contract](docs/specs/semantic-transport.md).
+
+The first concrete reproduction operation belongs to the existing building runtime under
+[ADR-0018](docs/adr/ADR-0018-building-reproduction.md). Explicit native capture freezes a currently
+admitted candidate's actual forms, kit, canonical definition facts, complete map and source/build
+context. The headless verifier invokes the same product planner and EditRuntime commit/undo/redo,
+comparing exact building/apply/result digests. Spatial object queries share the established canonical
+document order so unordered storage cannot enter clearing patches. One retained export request uses
+the existing staging owner for complete create-only publication. See [the building contract](docs/specs/building-reproduction.md).
+Rejected candidate capture extends the same owner under [ADR-0019](docs/adr/ADR-0019-rejected-building-reproduction.md).
+Each failed seed retains a shared request key and typed planner boundary with exact diagnostic
+evidence. A separate closed failure format invokes the same planner, requires the same rejection and
+proves an unchanged map; failed planning creates no patch or history transaction. Explicit failed-seed
+selection preserves any selected successful preview. See [the failure contract](docs/specs/building-failure-reproduction.md).
+Workspace appearance/scenario, projection settling/images, other operation contracts and crash
+recovery remain separate implementation boundaries.
+
+Authored-content snapshots compose these existing domains under
+[ADR-0020](docs/adr/ADR-0020-authored-document-snapshot.md): the existing EditorSession/EditorDocument,
+canonical map transport, validated optional scenario definition and complete ThemePack transport.
+Versioned identities distinguish map, scenario, appearance and the composite authored content.
+Explicit native capture uses one ProjectRuntime export slot across source/project replacement and
+never marks project edits saved. Decoding creates an isolated fresh baseline, without live import,
+history or source/clock/availability restoration. See [the contract](docs/specs/authored-snapshot.md).
 
 ## 16. UI architecture
 
@@ -1066,7 +1142,7 @@ ADR-0011 records the current ownership refinement. `docs/architecture/FEATURE-MA
 - `ProjectRuntime` owns source identity and native persistence/replacement policy. Native I/O and browser support terminate at platform adapters. Pending project diffs survive failed projections until explicit completion.
 - UI-local state, notices and window/modal policy live in `UiRuntime`; Script drawing returns text to execute after the widget callback. Preferences/key bindings and persistence cadence live in `SettingsRuntime`.
 - Diagnostics own performance/smoke hooks and an optional 256-event trace. Structured events correlate semantic transitions, source-plane footprints, invalidation reasons and FIFO build identities. They are observations, not acceptance predicates. Native and WASM use the same main-thread observer boundary.
-- Plugins, floor palettes and CPU picking/outline projections have dedicated owners. `TerrainController` remains an explicitly temporary, non-authoritative preview/history-routing adapter with a documented removal condition.
+- Plugins, floor palettes and CPU picking/outline projections have dedicated owners. `TerrainController` remains an explicitly temporary, non-authoritative preview/projection adapter with a documented removal condition; semantic descriptors drive replay and no application chronology remains.
 
 `scripts/editor_app_surface.json` records existing broad application methods and composition fields. New feature behavior must go on its owner. Removed methods require pruning their entries, so the baseline can only ratchet down during routine extraction. Deliberate composition/API changes require explicit ownership review rather than automatic baseline regeneration. The ratchet complements Rust privacy and behavioral tests; it cannot prove cohesion or detect all possible alternate implementations.
 

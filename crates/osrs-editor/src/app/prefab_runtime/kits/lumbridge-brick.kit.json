@@ -1,8 +1,12 @@
 {
  "format": "rustosrs-building-kit",
- "version": 1,
+ "version": 2,
  "name": "Lumbridge brick",
  "notes": "Brick walls, plain doors, curtained windows, red slate roof; floors, doors, windows, decoration and furniture ids measured on real revision-240 buildings (building_census example).",
+ "stairs": {
+  "up": {"id": 16683, "kind": 10, "orientations": [0, 1, 2, 3]},
+  "down": {"id": 16679, "kind": 10, "orientations": [0, 1, 2, 3]}
+ },
  "floor": {
   "underlay": null,
   "overlay": null

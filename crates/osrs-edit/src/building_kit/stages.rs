@@ -30,7 +30,11 @@ impl BuildingKit {
                 {
                     return BuildingStage::Roof;
                 }
-                if placement.object_id == self.detail.base.door.object_id
+                if self.stairs.is_some_and(|stairs| {
+                    [stairs.up, stairs.down].iter().any(|asset| {
+                        asset.object_id == placement.object_id && asset.kind == placement.kind
+                    })
+                }) || placement.object_id == self.detail.base.door.object_id
                     || self
                         .detail
                         .door_variants

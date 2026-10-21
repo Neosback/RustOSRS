@@ -14,17 +14,65 @@ use osrs_core::{
 };
 use std::collections::BTreeSet;
 
-/// The two objects a hip roof is made of: one for the slope and flat top, one for the edge trim.
+/// Which loc kind a roof uses for its three kinds of corner. Real roofs come in two styles that
+/// differ only in the kind number: the outer corner of the edge trim is 19 or 21, the outer slope
+/// corner 16 or 13, and the inner slope corner 15 or 14. The styles cluster by map area (one
+/// author's roofs are all one or the other), the pieces are placed identically, and a kit's
+/// objects model one of them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RoofKinds {
+    pub outer_edge: u8,
+    pub outer_slope: u8,
+    pub inner_slope: u8,
+}
+
+impl RoofKinds {
+    /// The kinds the Lumbridge roof uses.
+    pub const STANDARD: Self = Self {
+        outer_edge: 19,
+        outer_slope: 16,
+        inner_slope: 15,
+    };
+
+    /// Whether each kind is one of the two a roof piece can have.
+    pub const fn is_valid(self) -> bool {
+        matches!(self.outer_edge, 19 | 21)
+            && matches!(self.outer_slope, 16 | 13)
+            && matches!(self.inner_slope, 15 | 14)
+    }
+}
+
+/// The two objects a roof is made of, how its corners are numbered, and how it is chosen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HipRoofAssets {
+    /// Slope and flat top.
     pub slope: ObjectId,
+    /// Edge trim.
     pub edge: ObjectId,
+    pub kinds: RoofKinds,
+    /// Whether the roof has the edge ring. Some real roofs are all slope to the eaves.
+    pub trim: bool,
+    /// Out of 100: how often a plain rectangle gets a gable instead of a hip (see
+    /// `building_roof_gable`). Real rectangular roofs with trim are about one in five gables.
+    pub gable_percent: u8,
+}
+
+impl HipRoofAssets {
+    /// A hip roof of the standard kinds with trim, chosen as the measured mix of hips and gables.
+    pub const fn new(slope: ObjectId, edge: ObjectId) -> Self {
+        Self {
+            slope,
+            edge,
+            kinds: RoofKinds::STANDARD,
+            trim: true,
+            gable_percent: 20,
+        }
+    }
 }
 
 /// Loc kinds by layer: index 0 is the edge ring, index 1 the slope ring.
 const STRAIGHT: [u8; 2] = [18, 12];
-const OUTER: [u8; 2] = [19, 16];
-const INNER: [u8; 2] = [20, 15];
+const INNER_EDGE: u8 = 20;
 const FLAT: u8 = 17;
 
 /// Orientation of a piece with its outside to the `south`, `north`, `west` or `east`.
@@ -54,7 +102,14 @@ const fn diagonal_orientation(south: bool, west: bool, north: bool) -> u8 {
 }
 
 /// One tile's piece: `layer` 0 is the edge ring (second object), 1 the slope ring.
-fn piece(inside: &BTreeSet<(i32, i32)>, tile: (i32, i32), layer: usize) -> Option<(u8, u8)> {
+fn piece(
+    inside: &BTreeSet<(i32, i32)>,
+    tile: (i32, i32),
+    layer: usize,
+    kinds: RoofKinds,
+) -> Option<(u8, u8)> {
+    let outer = [kinds.outer_edge, kinds.outer_slope];
+    let inner = [INNER_EDGE, kinds.inner_slope];
     let has = |dx: i32, dy: i32| inside.contains(&(tile.0 + dx, tile.1 + dy));
     let (n, s, e, w) = (has(0, 1), has(0, -1), has(1, 0), has(-1, 0));
     let (ne, nw, se, sw) = (has(1, 1), has(-1, 1), has(1, -1), has(-1, -1));
@@ -77,14 +132,14 @@ fn piece(inside: &BTreeSet<(i32, i32)>, tile: (i32, i32), layer: usize) -> Optio
             } else {
                 3
             };
-            Some((INNER[layer], orientation))
+            Some((inner[layer], orientation))
         }
         1 => Some((STRAIGHT[layer], side_orientation(no_s, no_n, no_w))),
         2 if (no_n && no_s) || (no_e && no_w) => {
             // Opposite sides outside: a ridge one tile wide. Lie flat.
             Some((if layer == 1 { FLAT } else { STRAIGHT[0] }, 1))
         }
-        2 => Some((OUTER[layer], diagonal_orientation(no_s, no_w, no_n))),
+        2 => Some((outer[layer], diagonal_orientation(no_s, no_w, no_n))),
         _ => Some((if layer == 1 { FLAT } else { STRAIGHT[0] }, 1)),
     }
 }
@@ -106,7 +161,12 @@ pub fn hip_roof_placements(
             })
             .collect()
     };
-    let edge = ring(&layer0);
+    // Without trim the outermost ring is the slope ring: layer 0 is the slope layer.
+    let edge = if assets.trim {
+        ring(&layer0)
+    } else {
+        BTreeSet::new()
+    };
     let layer1: BTreeSet<(i32, i32)> = layer0.difference(&edge).copied().collect();
     let slope = ring(&layer1);
     let mut placements = Vec::with_capacity(layer0.len());
@@ -124,11 +184,11 @@ pub fn hip_roof_placements(
     };
     for &tile in &layer0 {
         if edge.contains(&tile) {
-            if let Some((kind, orientation)) = piece(&layer0, tile, 0) {
+            if let Some((kind, orientation)) = piece(&layer0, tile, 0, assets.kinds) {
                 put(tile, assets.edge, kind, orientation);
             }
         } else if slope.contains(&tile) {
-            if let Some((kind, orientation)) = piece(&layer1, tile, 1) {
+            if let Some((kind, orientation)) = piece(&layer1, tile, 1, assets.kinds) {
                 put(tile, assets.slope, kind, orientation);
             }
         } else {

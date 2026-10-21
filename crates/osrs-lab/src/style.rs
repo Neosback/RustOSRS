@@ -179,6 +179,7 @@ pub fn learn_style(
         kit.roof_hip = Some(KitHipRoof {
             slope_object: slope,
             edge_object: edge,
+            style: Default::default(),
         });
         report.learned.push("roof".into());
     } else {
@@ -414,7 +415,19 @@ mod tests {
         let brick = kit(BRICK);
         let objects = kit_objects(&brick);
         let mut buildings = Vec::new();
-        for (kind, seed) in [("tavern", 1), ("house", 2), ("shop", 4)] {
+        // Compact buildings have few doors (about one per room), so the learner needs several
+        // buildings before the kit's usual door outvotes its rarer variant.
+        for (kind, seed) in [
+            ("tavern", 1),
+            ("house", 2),
+            ("shop", 4),
+            ("tavern", 5),
+            ("house", 6),
+            ("shop", 7),
+            ("tavern", 8),
+            ("house", 9),
+            ("shop", 10),
+        ] {
             let made = generate(&brick, &brief(kind, seed)).unwrap_or_else(|e| panic!("{e}"));
             buildings.extend(census_buildings(
                 &made.snapshot,

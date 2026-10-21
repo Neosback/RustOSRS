@@ -66,11 +66,7 @@ impl PlaceState {
         self.known_object_size(id).unwrap_or((1, 1))
     }
     pub(in crate::app) fn known_object_size(&self, id: u32) -> Option<(u8, u8)> {
-        let entry = self.catalog.as_ref()?.get(id)?;
-        Some((
-            u8::try_from(entry.size_x).ok()?,
-            u8::try_from(entry.size_y).ok()?,
-        ))
+        self.catalog.as_ref()?.definition_size(id)
     }
 
     /// Cancel placing. Returns whether anything was armed.

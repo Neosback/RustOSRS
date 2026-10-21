@@ -16,6 +16,61 @@ fn object(id: u32, x: i32, y: i32, p: u8, kind: u8, orientation: u8) -> ObjectPl
     }
 }
 
+#[test]
+fn fallible_footprints_preserve_kind_rotation_and_zero_dimension_rules() {
+    for raw in 0..=22 {
+        let kind = LocKind::new(raw).unwrap_or_else(|| panic!("kind"));
+        for orientation in 0..4 {
+            let result = try_object_footprint(ObjectId::new(5), kind, orientation, &|_, _| {
+                Ok::<_, ()>((0, 3))
+            });
+            let expected = if matches!(raw, 10 | 11) {
+                if orientation & 1 == 1 { (3, 1) } else { (1, 3) }
+            } else {
+                (1, 1)
+            };
+            assert_eq!(result, Ok(expected));
+            assert_eq!(
+                footprint(ObjectId::new(5), raw, orientation, &|_, _| (0, 3)),
+                expected
+            );
+            let missing =
+                try_object_footprint(ObjectId::new(5), kind, orientation, &|_, _| Err("missing"));
+            assert_eq!(
+                missing,
+                if matches!(raw, 10 | 11) {
+                    Err("missing")
+                } else {
+                    Ok((1, 1))
+                }
+            );
+        }
+    }
+}
+
+#[test]
+fn fallible_overlap_resolves_outside_anchors_and_does_not_guess_missing_sizes() {
+    let reaching = object(5, 98, 100, 0, 11, 1);
+    let structural = object(6, 99, 100, 0, 0, 0);
+    let far = object(7, 1, 1, 0, 10, 0);
+    let other_plane = object(8, 100, 100, 1, 10, 0);
+    let document = MapDocument::from_parts([], [], [reaching, structural, far, other_plane]);
+    let resolve = |id, kind: LocKind| {
+        assert_eq!((id, kind.get()), (ObjectId::new(5), 11));
+        Ok::<_, &str>((1, 3))
+    };
+    assert_eq!(
+        try_objects_overlapping_rect(&document, (100, 100), (102, 102), plane(0), &resolve),
+        Ok(vec![reaching])
+    );
+    assert_eq!(
+        try_objects_overlapping_rect(&document, (100, 100), (102, 102), plane(0), &|_, _| Err(
+            "not decoded"
+        )),
+        Err("not decoded")
+    );
+}
+
 /// A 4x3 patch of ground with distinct heights, a diagonal overlay, a wall on the east edge of
 /// (1,1), a pillar-like scenery object (2x1) and a one-tile table.
 fn world(origin: (i32, i32)) -> MapDocument {
@@ -395,4 +450,80 @@ fn non_scenery_rotation_uses_scene_storage_footprints_even_with_large_definition
     assert!(placed.patch.ops().contains(&MapOp::AddObject {
         placement: object(900, 3301, 3302, 0, 12, 1)
     }));
+}
+
+#[test]
+fn fallible_prefab_planning_rejects_unresolved_sizes_without_querying_structural_kinds() {
+    let original = world((0, 0));
+    let prefab = capture_of(&original, (0, 0), 4, 3);
+    let destination = empty_ground((100, 100), 8, 8);
+    let before = destination.clone();
+    let error = try_plan_place_prefab(
+        &destination,
+        &prefab,
+        spec((100, 100), 1),
+        &|object, kind| Err(PrefabError::MissingFootprint { object, kind }),
+    );
+    assert!(matches!(error, Err(PrefabError::MissingFootprint { .. })));
+    assert_eq!(destination, before);
+    let mut structural = prefab;
+    structural.objects.retain(|p| p.kind == 0);
+    assert!(
+        try_plan_place_prefab(
+            &destination,
+            &structural,
+            spec((100, 100), 1),
+            &|_, _| panic!("structural sizes must not resolve")
+        )
+        .is_ok()
+    );
+}
+
+#[test]
+fn spatial_object_queries_keep_canonical_order_across_regions_and_hash_seeds() {
+    let plane = SourcePlane::new(0).unwrap_or_else(|| unreachable!());
+    let placement = |id, x, y, kind, orientation| ObjectPlacement {
+        object_id: ObjectId::new(id),
+        position: MapPosition::new(MapTile::new(x, y), plane),
+        kind: LocKind::new(kind).unwrap_or_else(|| unreachable!()),
+        orientation: ObjectOrientation::new(orientation).unwrap_or_else(|| unreachable!()),
+    };
+    let ordered = vec![
+        placement(9, -65, 63, 0, 0),
+        placement(2, -65, 63, 10, 1),
+        placement(5, -64, -1, 4, 0),
+        placement(7, -1, 0, 22, 0),
+        placement(8, 0, 0, 0, 0),
+        placement(9, 0, 0, 0, 2),
+        placement(1, 63, 63, 10, 0),
+        placement(3, 64, -64, 12, 0),
+        placement(4, 64, 64, 10, 0),
+    ];
+    let outside = placement(42, -67, 0, 10, 0);
+    for shift in 0..32 {
+        let mut input = ordered.clone();
+        let n = input.len();
+        input.rotate_left(shift % n);
+        if shift % 2 == 0 {
+            input.reverse();
+        }
+        input.push(outside);
+        let document = MapDocument::from_parts([], [], input);
+        assert_eq!(
+            objects_in_rect(&document, (-66, -65), (66, 66), plane),
+            ordered
+        );
+        let mut overlaps = vec![outside];
+        overlaps.extend(ordered.iter().copied());
+        assert_eq!(
+            objects_overlapping_rect(&document, (-66, -65), (66, 66), plane, &|_, _| (2, 3)),
+            overlaps
+        );
+        let fallible =
+            try_objects_overlapping_rect(&document, (-66, -65), (66, 66), plane, &|_, _| {
+                Ok::<_, ()>((2, 3))
+            })
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        assert_eq!(fallible, overlaps);
+    }
 }

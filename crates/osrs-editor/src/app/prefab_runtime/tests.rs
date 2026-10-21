@@ -267,7 +267,7 @@ fn the_built_in_kit_plans_a_building_that_applies_undoes_and_saves() {
     library.build.form.width = 14;
     library.build.form.height = 10;
     library.build.centre_site_on((3307, 3305), 0);
-    library.build.refresh(&document, 1, &|_, _| (1, 1));
+    library.build.refresh(&document, 1, &|_, _| Some((1, 1)));
     assert!(library.build.error.is_none(), "{:?}", library.build.error);
     let preview = library
         .build
@@ -277,7 +277,7 @@ fn the_built_in_kit_plans_a_building_that_applies_undoes_and_saves() {
     assert!(preview.objects > 20, "walls, doors, windows and a roof");
 
     // The same inputs make the same building; a new seed makes another.
-    library.build.refresh(&document, 1, &|_, _| (1, 1));
+    library.build.refresh(&document, 1, &|_, _| Some((1, 1)));
     let again = library
         .build
         .preview
@@ -285,7 +285,7 @@ fn the_built_in_kit_plans_a_building_that_applies_undoes_and_saves() {
         .unwrap_or_else(|| unreachable!());
     assert_eq!(again.apply, preview.apply);
     library.build.reroll();
-    library.build.refresh(&document, 1, &|_, _| (1, 1));
+    library.build.refresh(&document, 1, &|_, _| Some((1, 1)));
     let other = library
         .build
         .preview
@@ -305,10 +305,10 @@ fn the_built_in_kit_plans_a_building_that_applies_undoes_and_saves() {
     assert_eq!(document, original);
 
     // It can be kept in the library as a generated prefab and placed again elsewhere.
-    library.build.refresh(&document, 1, &|_, _| (1, 1));
+    library.build.refresh(&document, 1, &|_, _| Some((1, 1)));
     let prefab = library
         .build
-        .to_prefab()
+        .to_prefab(0, 1, &|_, _| Some((1, 1)))
         .unwrap_or_else(|e| unreachable!("{e}"));
     assert!(matches!(prefab.source, PrefabSource::Generated { .. }));
     assert!(prefab.tags.contains(&"generated".to_owned()));
@@ -327,7 +327,7 @@ fn a_site_without_map_data_says_why_and_clearing_the_site_removes_what_stands_th
     library.build.centre_site_on((3400, 3400), 0);
     library
         .build
-        .refresh(&MapDocument::new(), 1, &|_, _| (1, 1));
+        .refresh(&MapDocument::new(), 1, &|_, _| Some((1, 1)));
     assert!(library.build.preview.is_none());
     assert!(library.build.error.is_some());
 
@@ -343,7 +343,7 @@ fn a_site_without_map_data_says_why_and_clearing_the_site_removes_what_stands_th
             placement: tree,
         }]))
         .unwrap_or_else(|e| unreachable!("{e:?}"));
-    library.build.refresh(&document, 2, &|_, _| (1, 1));
+    library.build.refresh(&document, 2, &|_, _| Some((1, 1)));
     let preview = library
         .build
         .preview
@@ -362,7 +362,7 @@ fn a_site_without_map_data_says_why_and_clearing_the_site_removes_what_stands_th
             placement: tree,
         }]))
         .unwrap_or_else(|e| unreachable!("{e:?}"));
-    library.build.refresh(&standing, 3, &|_, _| (1, 1));
+    library.build.refresh(&standing, 3, &|_, _| Some((1, 1)));
     assert_eq!(library.build.preview.as_ref().map(|p| p.removed), Some(0));
 }
 
@@ -395,7 +395,7 @@ fn applying_the_same_building_twice_leaves_what_stands_instead_of_failing() {
     let mut document = flat_ground(plane, (3500, 3500), 14, 10);
     let mut library = PrefabRuntime::default();
     library.build.centre_site_on((3507, 3505), 0);
-    library.build.refresh(&document, 1, &|_, _| (1, 1));
+    library.build.refresh(&document, 1, &|_, _| Some((1, 1)));
     let first = library
         .build
         .preview
@@ -407,7 +407,7 @@ fn applying_the_same_building_twice_leaves_what_stands_instead_of_failing() {
 
     // Without clearing, everything already stands: the plan is valid and adds nothing new.
     library.build.form.clear_site = false;
-    library.build.refresh(&document, 2, &|_, _| (1, 1));
+    library.build.refresh(&document, 2, &|_, _| Some((1, 1)));
     let again = library
         .build
         .preview
@@ -420,7 +420,7 @@ fn applying_the_same_building_twice_leaves_what_stands_instead_of_failing() {
 
     // With clearing, the same building replaces itself.
     library.build.form.clear_site = true;
-    library.build.refresh(&document, 3, &|_, _| (1, 1));
+    library.build.refresh(&document, 3, &|_, _| Some((1, 1)));
     let replaced = library
         .build
         .preview

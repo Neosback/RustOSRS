@@ -5,6 +5,18 @@
 //! one-tile corridor bands between recursive partitions. This layer still does not choose OSRS
 //! assets or run local WFC refinement.
 
+mod compact;
+mod roles;
+mod room_count;
+
+pub use compact::{
+    CompactLayout, FootprintShape, pack_compact_program, pack_fitted_compact_program,
+    plan_compact_layout, plan_compact_layout_for,
+};
+pub use room_count::{
+    ROOM_COUNT_BUCKETS, ROOM_COUNT_TABLE, RoomCountRow, archetype_min_rooms, sampled_room_count,
+};
+
 use crate::{BuildingArchetype, RectSite, RoomId, RoomRect};
 use osrs_core::coords::MapTile;
 
@@ -224,6 +236,36 @@ pub fn building_program(archetype: BuildingArchetype) -> BuildingProgram {
     }
 }
 
+/// What an upper floor of a building holds: sleeping, working and storing rooms, not the ground
+/// floor's living, selling or worshipping rooms. Room 0 is the biggest and joins the rest.
+pub fn upper_floor_program(archetype: BuildingArchetype) -> BuildingProgram {
+    use BuildingRoomRole as R;
+    let roles = match archetype {
+        BuildingArchetype::House => [R::Bedroom, R::Bedroom, R::Bathroom, R::Storage, R::Utility],
+        BuildingArchetype::Shop => [R::Storage, R::Office, R::Workshop, R::Utility, R::Storage],
+        BuildingArchetype::Tavern => [
+            R::GuestRoom,
+            R::GuestRoom,
+            R::GuestRoom,
+            R::Bathroom,
+            R::Storage,
+        ],
+        BuildingArchetype::Bank => [R::Office, R::Office, R::Security, R::Storage, R::Utility],
+        BuildingArchetype::Church => [R::Office, R::Storage, R::Vestry, R::Storage, R::Utility],
+        BuildingArchetype::Warehouse => {
+            [R::Storage, R::Storage, R::Office, R::Workshop, R::Utility]
+        }
+        BuildingArchetype::Castle => [R::Bedroom, R::Bedroom, R::Armory, R::Storage, R::Utility],
+        BuildingArchetype::Dungeon => [R::Cell, R::Cell, R::Cell, R::GuardRoom, R::Storage],
+    };
+    let weights = [4, 3, 2, 1, 1];
+    program(
+        archetype,
+        [0, 1, 2, 3, 4].map(|i| room(i as u16, roles[i], weights[i])),
+        [(0, 1), (0, 2), (0, 3), (0, 4)],
+    )
+}
+
 fn room(id: u16, role: BuildingRoomRole, area_weight: u16) -> ProgramRoom {
     ProgramRoom {
         id: RoomId::new(id),
@@ -283,6 +325,17 @@ impl BspLayout {
     pub fn room(&self, id: RoomId) -> Option<&BspRoomPlacement> {
         self.rooms.iter().find(|placement| placement.room == id)
     }
+}
+
+/// How rooms are laid out in a generated building.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LayoutStyle {
+    /// Rooms share walls, joined by a few doors, in a rectangle or an L or T; the room count
+    /// follows the real distribution for the building's size.
+    #[default]
+    Compact,
+    /// Rooms off one-tile corridor bands, as many as the area holds. The earlier layout.
+    Corridors,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -421,6 +474,33 @@ pub fn pack_building_program(
         rooms: placements,
         corridors,
     })
+}
+
+/// Pack `program` into `site`, dropping the least important rooms until the rest fit.
+///
+/// A site only holds so many rooms of the program's minimum size; asking for more used to be a
+/// hard `CannotSplitForRoomCount` even though a smaller building would fit. Rooms are listed most
+/// important first, so the program is cut from the end. The first attempt is the full program, so
+/// a layout that already packs is returned unchanged. The program that was packed comes back with
+/// the layout. A site too small for even one room is still an error.
+pub fn pack_fitted_program(
+    program: &BuildingProgram,
+    site: RectSite,
+    seed: u64,
+) -> Result<(BuildingProgram, BspLayout), BspLayoutError> {
+    let mut fitted = program.clone();
+    loop {
+        match pack_building_program(&fitted, site, seed) {
+            Ok(layout) => return Ok((fitted, layout)),
+            Err(
+                BspLayoutError::CannotSplitForRoomCount { .. }
+                | BspLayoutError::RoomDoesNotFit { .. },
+            ) if fitted.rooms().len() > 1 => {
+                fitted = fitted.limited_to(fitted.rooms().len() - 1);
+            }
+            Err(error) => return Err(error),
+        }
+    }
 }
 
 fn best_split_candidate(leaves: &[Leaf], min_span: u16) -> Option<usize> {
@@ -595,6 +675,57 @@ mod tests {
             }
             assert_eq!(visited, known);
         }
+    }
+
+    #[test]
+    fn a_program_that_already_packs_is_returned_unchanged() {
+        let program = building_program(BuildingArchetype::House).limited_to(2);
+        let direct = pack_building_program(&program, site(20, 16), 5)
+            .unwrap_or_else(|e| panic!("two rooms pack: {e:?}"));
+        let (fitted, layout) = pack_fitted_program(&program, site(20, 16), 5)
+            .unwrap_or_else(|e| panic!("fitting keeps a fit: {e:?}"));
+        assert_eq!(fitted, program);
+        assert_eq!(layout, direct);
+    }
+
+    #[test]
+    fn rooms_are_dropped_from_the_end_until_the_program_fits_the_site() {
+        let mut exercised = 0;
+        for archetype in [
+            BuildingArchetype::House,
+            BuildingArchetype::Tavern,
+            BuildingArchetype::Church,
+        ] {
+            let program = building_program(archetype);
+            let small = site(14, 12);
+            if pack_building_program(&program, small, 3).is_ok() {
+                continue;
+            }
+            exercised += 1;
+            let (fitted, layout) = pack_fitted_program(&program, small, 3)
+                .unwrap_or_else(|e| panic!("a smaller program fits: {e:?}"));
+            assert!(fitted.rooms().len() < program.rooms().len());
+            assert_eq!(layout.rooms().len(), fitted.rooms().len());
+            // The most important rooms are the ones kept.
+            let kept: Vec<_> = program
+                .rooms()
+                .iter()
+                .take(fitted.rooms().len())
+                .map(|room| room.id)
+                .collect();
+            let got: Vec<_> = fitted.rooms().iter().map(|room| room.id).collect();
+            assert_eq!(got, kept);
+        }
+        assert!(exercised > 0, "no archetype overfilled the site");
+    }
+
+    #[test]
+    fn a_site_too_small_for_any_room_is_still_an_error() {
+        let program = building_program(BuildingArchetype::House);
+        assert!(matches!(
+            pack_fitted_program(&program, site(4, 4), 0),
+            Err(BspLayoutError::SiteTooSmall { .. })
+        ));
     }
 
     #[test]

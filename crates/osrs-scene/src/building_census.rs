@@ -19,7 +19,7 @@ mod tags;
 
 pub use edges::{Dir, EdgeFeature, EdgePiece, Edges, OPENING_OBJECT};
 pub use guess::{Guess, guess_objects};
-pub use judge::{FEATURE_NAMES, FEATURES, Judgement, judge};
+pub use judge::{FEATURE_NAMES, FEATURES, Finding, FindingKind, Judgement, judge, judge_from};
 pub use rooms::analyze;
 pub use tags::{RoomTag, tag_room};
 

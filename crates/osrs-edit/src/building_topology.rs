@@ -5,6 +5,7 @@
 //! room roles for later furnishing and WFC refinement.
 
 mod authored;
+mod compact;
 mod single;
 use crate::{
     BspLayout, BuildingPlan, BuildingProgram, BuildingRequest, BuildingRoomRole, PortalKind,
@@ -49,6 +50,7 @@ pub enum BspTopologyError {
     ArchetypeMismatch,
     SiteMismatch,
     NoCorridors,
+    DisconnectedRooms,
     MissingProgramRoom { room: RoomId },
     RoomIdOverflow,
     RoomNotAdjacentToCorridor { room: RoomId },
@@ -62,6 +64,15 @@ struct EntranceCandidate {
     doorway: MapTile,
     entrance: MapTile,
     corridor: RoomId,
+}
+
+/// The plan for a corridor-free layout: a door tree over the rooms that touch, one entrance.
+pub fn build_compact_building_plan(
+    request: BuildingRequest,
+    program: &BuildingProgram,
+    layout: &crate::CompactLayout,
+) -> Result<BspBuildingPlan, BspTopologyError> {
+    compact::build(request, program, layout)
 }
 
 pub fn build_bsp_building_plan(
@@ -449,6 +460,131 @@ mod tests {
                     .count(),
                 1
             );
+        }
+    }
+
+    fn compact_plan(
+        archetype: BuildingArchetype,
+        rooms: usize,
+        seed: u64,
+    ) -> (BuildingRequest, BspBuildingPlan) {
+        let request = request(archetype, seed);
+        let program = building_program(archetype).limited_to(rooms);
+        let layout = crate::pack_compact_program(&program, request.site, seed)
+            .unwrap_or_else(|error| unreachable!("valid compact layout: {error:?}"));
+        let plan = build_compact_building_plan(request, &program, &layout)
+            .unwrap_or_else(|error| unreachable!("valid compact topology: {error:?}"));
+        (request, plan)
+    }
+
+    #[test]
+    fn compact_plans_validate_and_join_the_rooms_with_a_door_tree() {
+        for archetype in [
+            BuildingArchetype::House,
+            BuildingArchetype::Tavern,
+            BuildingArchetype::Church,
+            BuildingArchetype::Castle,
+        ] {
+            for rooms in 1..=5 {
+                for seed in 0..40 {
+                    let (request, generated) = compact_plan(archetype, rooms, seed);
+                    let document = MapDocument::from_parts([], heights_for(request), []);
+                    let snapshot = capture_generation_snapshot(&document, request, []);
+                    let report = validate_building_plan(&generated.plan, &snapshot);
+                    assert!(
+                        report.is_valid(),
+                        "{archetype:?} {rooms} rooms #{seed}: {:?}",
+                        report.diagnostics()
+                    );
+                    // A tree: one door fewer than rooms between them, plus the way in.
+                    let inside = generated
+                        .plan
+                        .connections
+                        .iter()
+                        .filter(|c| c.from.is_some())
+                        .count();
+                    assert_eq!(inside, rooms - 1, "{archetype:?} {rooms} rooms #{seed}");
+                    assert!(
+                        generated
+                            .plan
+                            .connections
+                            .iter()
+                            .all(|c| c.kind == PortalKind::Door)
+                    );
+                    derive_building_architecture(&generated.plan)
+                        .unwrap_or_else(|e| panic!("{archetype:?} #{seed}: {e:?}"));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_way_in_is_on_the_entrance_room_when_it_reaches_the_outside() {
+        let mut on_entrance_room = 0;
+        let mut total = 0;
+        for seed in 0..60 {
+            let (_, generated) = compact_plan(BuildingArchetype::House, 3, seed);
+            let exterior = generated
+                .plan
+                .connections
+                .iter()
+                .find(|c| c.from.is_none())
+                .unwrap_or_else(|| unreachable!("every plan has a way in"));
+            total += 1;
+            if exterior.to == RoomId::new(0) {
+                on_entrance_room += 1;
+            }
+        }
+        assert!(
+            on_entrance_room * 10 >= total * 9,
+            "{on_entrance_room}/{total}"
+        );
+    }
+
+    #[test]
+    fn no_door_stands_in_a_corner_of_a_wall_it_could_avoid() {
+        for seed in 0..60 {
+            let (_, generated) = compact_plan(BuildingArchetype::Tavern, 4, seed);
+            for connection in generated
+                .plan
+                .connections
+                .iter()
+                .filter(|c| c.from.is_some())
+            {
+                let from = generated
+                    .plan
+                    .rooms
+                    .iter()
+                    .find(|r| Some(r.id) == connection.from)
+                    .unwrap_or_else(|| unreachable!("known room"));
+                let to = generated
+                    .plan
+                    .rooms
+                    .iter()
+                    .find(|r| r.id == connection.to)
+                    .unwrap_or_else(|| unreachable!("known room"));
+                let shared = rect_tiles(from.rect)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|t| {
+                        cardinal_neighbors(*t)
+                            .into_iter()
+                            .flatten()
+                            .any(|n| to.rect.contains(n))
+                    })
+                    .count();
+                if shared >= 3 {
+                    let d = connection.doorway;
+                    let r = from.rect;
+                    let corner_x = d.x == r.origin.x || d.x == r.origin.x + i32::from(r.width) - 1;
+                    let corner_y = d.y == r.origin.y || d.y == r.origin.y + i32::from(r.height) - 1;
+                    // A door at a room's corner would need the neighbour's wall to continue past it.
+                    assert!(
+                        !(corner_x && corner_y),
+                        "seed {seed}: door {d:?} in a corner of {r:?}"
+                    );
+                }
+            }
         }
     }
 

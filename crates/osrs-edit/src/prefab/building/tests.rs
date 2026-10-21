@@ -67,6 +67,42 @@ fn outside_anchors_do_not_copy_outside_ground_and_review_is_required() {
         Err(PrefabError::Building(BuildingPrefabError::Unreviewed))
     );
 }
+
+#[test]
+fn fitted_placement_requires_added_scenery_dimensions_even_without_rotation_or_neighbors() {
+    let (mut document, mut capture) = source();
+    let object = ObjectPlacement {
+        object_id: ObjectId::new(55),
+        position: MapPosition::new(MapTile::new(2, 2), plane(0)),
+        kind: LocKind::new(10).unwrap_or_else(|| panic!("kind")),
+        orientation: ObjectOrientation::new(0).unwrap_or_else(|| panic!("orientation")),
+    };
+    document
+        .apply_patch(&MapPatch::new(vec![MapOp::AddObject { placement: object }]))
+        .unwrap_or_else(|e| panic!("{e:?}"));
+    capture.objects.push(object);
+    capture.object_sizes.insert(object.object_id, (1, 1));
+    let prefab =
+        capture_building_prefab(&document, &capture, "house").unwrap_or_else(|e| panic!("{e}"));
+    let destination = MapDocument::new();
+    let spec = PlaceSpec {
+        origin: MapTile::new(100, 100),
+        base_plane: plane(0),
+        quarter_turns: 0,
+        terrain: false,
+        heights: false,
+        objects: true,
+        replace_objects: false,
+    };
+    assert!(matches!(
+        try_plan_place_prefab(&destination, &prefab, spec, &|object, kind| Err(
+            PrefabError::MissingFootprint { object, kind }
+        )),
+        Err(PrefabError::MissingFootprint { .. })
+    ));
+    assert!(try_plan_place_prefab(&destination, &prefab, spec, &|_, _| Ok((2, 3))).is_ok());
+    assert!(destination.object_entries().is_empty());
+}
 #[test]
 fn foundations_rebase_roofs_and_undo_restores_every_channel() {
     let (doc, spec) = source();
@@ -142,16 +178,21 @@ fn rectangle_prefab_v1_still_loads_without_building_metadata() {
 #[test]
 fn v2_migrates_to_typed_rooms_and_anchor_with_sparse_roundtrip_and_rotation() {
     let (doc, spec) = source();
-    let mut p = capture_building_prefab(&doc, &spec, "rooms").unwrap();
+    let mut p =
+        capture_building_prefab(&doc, &spec, "rooms").unwrap_or_else(|error| panic!("{error:?}"));
     p.version = 2;
-    let mut value = serde_json::to_value(&p).unwrap();
+    let mut value = serde_json::to_value(&p).unwrap_or_else(|error| panic!("{error:?}"));
     value["building"]
         .as_object_mut()
-        .unwrap()
+        .unwrap_or_else(|| panic!("building metadata must serialize as an object"))
         .remove("semantics");
-    let mut loaded: Prefab = serde_json::from_value(value).unwrap();
+    let mut loaded: Prefab =
+        serde_json::from_value(value).unwrap_or_else(|error| panic!("{error:?}"));
     assert!(loaded.validate().is_ok());
-    let b = loaded.building.as_mut().unwrap();
+    let b = loaded
+        .building
+        .as_mut()
+        .unwrap_or_else(|| panic!("captured prefab contains building metadata"));
     b.semantics.rooms.push(PrefabRoom {
         id: 1,
         role: "living".into(),
@@ -159,9 +200,14 @@ fn v2_migrates_to_typed_rooms_and_anchor_with_sparse_roundtrip_and_rotation() {
         human: true,
     });
     let chosen = BTreeSet::from([b.floors[0]]);
-    let new = b.semantics.split(1, &chosen).unwrap();
+    let new = b
+        .semantics
+        .split(1, &chosen)
+        .unwrap_or_else(|error| panic!("{error:?}"));
     assert!(b.semantics.rooms.iter().all(|r| r.human));
-    b.semantics.merge(1, new).unwrap();
+    b.semantics
+        .merge(1, new)
+        .unwrap_or_else(|error| panic!("{error:?}"));
     assert_eq!(b.semantics.rooms[0].cells, b.floors);
     b.semantics.anchor = Some(PrefabCell {
         x: 1,
@@ -169,9 +215,14 @@ fn v2_migrates_to_typed_rooms_and_anchor_with_sparse_roundtrip_and_rotation() {
         plane: 0,
     });
     loaded.version = PREFAB_VERSION;
-    loaded.validate().unwrap();
-    let encoded = serde_json::to_string(&loaded).unwrap();
-    assert_eq!(serde_json::from_str::<Prefab>(&encoded).unwrap(), loaded);
+    loaded
+        .validate()
+        .unwrap_or_else(|error| panic!("{error:?}"));
+    let encoded = serde_json::to_string(&loaded).unwrap_or_else(|error| panic!("{error:?}"));
+    assert_eq!(
+        serde_json::from_str::<Prefab>(&encoded).unwrap_or_else(|error| panic!("{error:?}")),
+        loaded
+    );
     let cursor = MapTile::new(100, 100);
     for (turn, (x, y)) in [(1, 2), (2, 3), (3, 2), (2, 1)].into_iter().enumerate() {
         assert_eq!(
@@ -179,7 +230,10 @@ fn v2_migrates_to_typed_rooms_and_anchor_with_sparse_roundtrip_and_rotation() {
             Some(MapTile::new(100 - x, 100 - y))
         );
     }
-    let b = loaded.building.as_mut().unwrap();
+    let b = loaded
+        .building
+        .as_mut()
+        .unwrap_or_else(|| panic!("captured prefab contains building metadata"));
     b.semantics.rooms[0].cells.push(PrefabCell {
         x: 0,
         y: 0,

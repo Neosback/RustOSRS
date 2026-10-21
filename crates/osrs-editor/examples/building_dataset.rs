@@ -4,6 +4,8 @@
 mod areas;
 #[path = "building_dataset/context.rs"]
 mod context;
+#[path = "building_dataset/models.rs"]
+mod models;
 #[path = "building_dataset/record.rs"]
 mod record;
 use osrs_cache::{openrune::installation::Installation, source::CacheSource};
@@ -120,7 +122,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 })
                 .collect::<BTreeMap<_, _>>()
         });
-        table.insert(id.get().to_string(),json!({"name":info.name,"symbol":info.symbol,"actions":info.actions,"size":[info.size.0,info.size.1],"category":definition.as_ref().and_then(|d|d.category.map(|c|c.get())),"map_scene":definition.as_ref().and_then(|d|d.map_scene.map(|s|s.get())),"map_icon":definition.as_ref().and_then(|d|d.map_icon.map(|i|i.get())),"blocking_mask":definition.as_ref().map(|d|d.blocking_mask),"support_items":definition.as_ref().and_then(|d|d.support_items),"parameters":parameters,"translation":definition.as_ref().map(|d|[d.translation.x,d.translation.y,d.translation.z]),"scale":definition.as_ref().map(|d|[d.scale.x,d.scale.y,d.scale.z]),"mirrored":definition.as_ref().map(|d|d.is_rotated),"morphs":definition.as_ref().and_then(|d|d.morphs.as_ref().map(|m|json!({"varbit":m.transform_varbit.map(|v|v.get()),"varp":m.transform_varp.map(|v|v.get()),"transforms":m.transforms.iter().map(|v|v.map(|id|id.get())).collect::<Vec<_>>(),"fallback":m.fallback.map(|v|v.get())}))),"decoration_displacement":definition.as_ref().map(|d|d.decoration_displacement),"contour_clip":definition.as_ref().and_then(|d|d.contour_clip)}));
+        table.insert(id.get().to_string(),json!({"name":info.name,"symbol":info.symbol,"actions":info.actions,"size":[info.size.0,info.size.1],"category":definition.as_ref().and_then(|d|d.category.map(|c|c.get())),"map_scene":definition.as_ref().and_then(|d|d.map_scene.map(|s|s.get())),"map_icon":definition.as_ref().and_then(|d|d.map_icon.map(|i|i.get())),"blocking_mask":definition.as_ref().map(|d|d.blocking_mask),"support_items":definition.as_ref().and_then(|d|d.support_items),"parameters":parameters,"models":definition.as_ref().map(|d|models::metadata(d.models.as_ref())),"translation":definition.as_ref().map(|d|[d.translation.x,d.translation.y,d.translation.z]),"scale":definition.as_ref().map(|d|[d.scale.x,d.scale.y,d.scale.z]),"mirrored":definition.as_ref().map(|d|d.is_rotated),"morphs":definition.as_ref().and_then(|d|d.morphs.as_ref().map(|m|json!({"varbit":m.transform_varbit.map(|v|v.get()),"varp":m.transform_varp.map(|v|v.get()),"transforms":m.transforms.iter().map(|v|v.map(|id|id.get())).collect::<Vec<_>>(),"fallback":m.fallback.map(|v|v.get())}))),"decoration_displacement":definition.as_ref().map(|d|d.decoration_displacement),"contour_clip":definition.as_ref().and_then(|d|d.contour_clip)}));
     }
     std::fs::write(out.join("objects.json"), serde_json::to_vec(&table)?)?;
     std::fs::write(

@@ -1,6 +1,8 @@
 //! Native project persistence and replacement state machine. UI code emits choices; this
 //! module owns saved revision, pending diffs and save/quit/replacement transitions.
 mod save;
+mod snapshot;
+pub(super) use snapshot::SnapshotJob;
 #[cfg(test)]
 mod tests;
 use super::ProjectRuntime;

@@ -10,7 +10,7 @@ use crate::{
 };
 use osrs_core::coords::{MapTile, SourcePlane};
 use osrs_core::ids::ObjectId;
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BuildingFloorIndex(u8);
@@ -158,34 +158,66 @@ pub enum StairConstraintError {
     InvalidApproachTile { tile: MapTile },
 }
 
+/// What the stair planner needs to know about one floor: where it is, which room each tile is in,
+/// and which tiles a stair may not use.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct FloorLayout {
+    pub tiles: Vec<MapTile>,
+    /// The room of each tile. Empty for a floor that is one open space.
+    pub room_of: BTreeMap<MapTile, u16>,
+    /// Tiles no stair may stand on or be approached from: the ones beside every door.
+    pub keep_clear: BTreeSet<MapTile>,
+}
+
+impl FloorLayout {
+    /// A floor of `tiles` that is one open space with nothing kept clear.
+    pub fn open(tiles: &[MapTile]) -> Self {
+        Self {
+            tiles: tiles.to_vec(),
+            ..Self::default()
+        }
+    }
+}
+
 /// Validate aligned solved floor surfaces and choose one deterministic stair anchor per transition.
 ///
-/// The initial vertical policy is intentionally strict: every upper-floor tile must be supported by
-/// the floor directly below it, and a stair needs two cardinally adjacent walkable tiles on both
-/// floors so it has a deterministic approach direction. Stair footprints are reserved on both
-/// floors, preventing adjacent vertical transitions from silently occupying the same tiles.
+/// Every upper-floor tile must be supported by the floor directly below it, and a stair needs two
+/// cardinally adjacent walkable tiles on both floors so it has a deterministic approach direction.
+/// Stair footprints are reserved on both floors, preventing adjacent vertical transitions from
+/// silently occupying the same tiles.
 pub fn plan_vertical_connectivity(
     request: BuildingRequest,
     floor_tiles: &[Vec<MapTile>],
 ) -> Result<BuildingVerticalPlan, BuildingVerticalError> {
+    let floors: Vec<FloorLayout> = floor_tiles.iter().map(|t| FloorLayout::open(t)).collect();
+    plan_vertical_connectivity_in_layouts(request, &floors)
+}
+
+/// [`plan_vertical_connectivity`] with each floor's rooms and kept-clear tiles known. A stair and
+/// its approach stand in one room on both floors it joins, never on a kept-clear tile, and among
+/// the places that qualify the ones against a wall (where a real stair stands) are chosen.
+pub fn plan_vertical_connectivity_in_layouts(
+    request: BuildingRequest,
+    floors_in: &[FloorLayout],
+) -> Result<BuildingVerticalPlan, BuildingVerticalError> {
     if request.floors == 0 {
         return Err(BuildingVerticalError::FloorCountMustBePositive);
     }
-    if usize::from(request.floors) != floor_tiles.len() {
+    if usize::from(request.floors) != floors_in.len() {
         return Err(BuildingVerticalError::FloorCountMismatch {
             requested: request.floors,
-            provided: floor_tiles.len(),
+            provided: floors_in.len(),
         });
     }
 
-    let mut floors = Vec::with_capacity(floor_tiles.len());
-    let mut floor_sets = Vec::with_capacity(floor_tiles.len());
-    for (raw_floor, tiles) in floor_tiles.iter().enumerate() {
+    let mut floors = Vec::with_capacity(floors_in.len());
+    let mut floor_sets = Vec::with_capacity(floors_in.len());
+    for (raw_floor, layout) in floors_in.iter().enumerate() {
         let floor = BuildingFloorIndex::new(
             u8::try_from(raw_floor).unwrap_or_else(|_| unreachable!("request floor count is u8")),
         );
         let plane = source_plane_for_floor(request, floor)?;
-        let set = tiles.iter().copied().collect::<BTreeSet<_>>();
+        let set = layout.tiles.iter().copied().collect::<BTreeSet<_>>();
         if set.is_empty() {
             return Err(BuildingVerticalError::EmptyFloor { floor });
         }
@@ -225,12 +257,18 @@ pub fn plan_vertical_connectivity(
                 .checked_add(1)
                 .unwrap_or_else(|| unreachable!("adjacent floor index remains u8")),
         );
-        let candidates = stair_candidates(
-            &floor_sets[lower_index],
-            &floor_sets[lower_index + 1],
-            &reserved[lower_index],
-            &reserved[lower_index + 1],
-        );
+        let candidates = stair_candidates([
+            Side {
+                set: &floor_sets[lower_index],
+                layout: &floors_in[lower_index],
+                reserved: &reserved[lower_index],
+            },
+            Side {
+                set: &floor_sets[lower_index + 1],
+                layout: &floors_in[lower_index + 1],
+                reserved: &reserved[lower_index + 1],
+            },
+        ]);
         let Some(anchor) = choose_stair_anchor(request.seed, lower_floor, upper_floor, &candidates)
         else {
             return Err(BuildingVerticalError::NoStairAnchor {
@@ -351,26 +389,63 @@ fn source_plane_for_floor(
     SourcePlane::new(value).ok_or(BuildingVerticalError::PlaneOverflow { floor })
 }
 
-fn stair_candidates(
-    lower: &BTreeSet<MapTile>,
-    upper: &BTreeSet<MapTile>,
-    reserved_lower: &BTreeSet<MapTile>,
-    reserved_upper: &BTreeSet<MapTile>,
-) -> Vec<(MapTile, CardinalDirection)> {
+/// One floor of a transition, as the candidate search reads it.
+#[derive(Clone, Copy)]
+struct Side<'a> {
+    set: &'a BTreeSet<MapTile>,
+    layout: &'a FloorLayout,
+    reserved: &'a BTreeSet<MapTile>,
+}
+
+impl Side<'_> {
+    /// Whether `tile` can be part of a stair on this floor.
+    fn usable(&self, tile: MapTile) -> bool {
+        self.set.contains(&tile)
+            && !self.reserved.contains(&tile)
+            && !self.layout.keep_clear.contains(&tile)
+    }
+
+    fn room(&self, tile: MapTile) -> Option<u16> {
+        self.layout.room_of.get(&tile).copied()
+    }
+
+    /// Whether the tile behind the stair (away from its approach) is a wall: another room or no
+    /// floor at all.
+    fn against_wall(&self, tile: MapTile, facing: CardinalDirection) -> bool {
+        facing.opposite().neighbor(tile).is_none_or(|behind| {
+            !self.set.contains(&behind) || self.room(behind) != self.room(tile)
+        })
+    }
+}
+
+/// Anchor and facing pairs where a stair and its approach both stand on usable tiles of both
+/// floors, in one room on each, preferring the ones against a wall on both floors, then on one.
+fn stair_candidates(sides: [Side<'_>; 2]) -> Vec<(MapTile, CardinalDirection)> {
+    let mut best_score = 0;
     let mut candidates = Vec::new();
-    for &tile in lower.intersection(upper) {
-        if reserved_lower.contains(&tile) || reserved_upper.contains(&tile) {
+    for &tile in sides[0].set.intersection(sides[1].set) {
+        if !sides.iter().all(|side| side.usable(tile)) {
             continue;
         }
         for direction in CardinalDirection::ALL {
             let Some(approach) = direction.neighbor(tile) else {
                 continue;
             };
-            if lower.contains(&approach)
-                && upper.contains(&approach)
-                && !reserved_lower.contains(&approach)
-                && !reserved_upper.contains(&approach)
+            if !sides
+                .iter()
+                .all(|side| side.usable(approach) && side.room(approach) == side.room(tile))
             {
+                continue;
+            }
+            let score = sides
+                .iter()
+                .filter(|side| side.against_wall(tile, direction))
+                .count();
+            if score > best_score {
+                best_score = score;
+                candidates.clear();
+            }
+            if score == best_score {
                 candidates.push((tile, direction));
             }
         }
@@ -435,6 +510,99 @@ mod tests {
             archetype: BuildingArchetype::House,
             style: BuildingStyle::Generic,
             constraints: BuildingConstraints::default(),
+        }
+    }
+
+    fn layout(
+        tiles: &[MapTile],
+        keep_clear: &BTreeSet<MapTile>,
+        room_of: impl Fn(MapTile) -> u16,
+    ) -> FloorLayout {
+        FloorLayout {
+            tiles: tiles.to_vec(),
+            room_of: tiles.iter().map(|t| (*t, room_of(*t))).collect(),
+            keep_clear: keep_clear.clone(),
+        }
+    }
+
+    #[test]
+    fn a_stair_never_uses_a_tile_that_is_kept_clear() {
+        let floor = rectangle(MapTile::new(3200, 3200), 4, 3);
+        let keep_clear: BTreeSet<MapTile> =
+            floor.iter().copied().filter(|tile| tile.x < 3202).collect();
+        let one_room = layout(&floor, &keep_clear, |_| 0);
+        for seed in 0..32 {
+            let mut request = request(0, 2);
+            request.seed = seed;
+            let plan = plan_vertical_connectivity_in_layouts(
+                request,
+                &[one_room.clone(), one_room.clone()],
+            )
+            .unwrap_or_else(|e| panic!("the east half has room for a stair: {e:?}"));
+            for stair in plan.stairs() {
+                assert!(!keep_clear.contains(&stair.tile), "seed {seed}");
+                let approach = stair
+                    .approach_tile()
+                    .unwrap_or_else(|| unreachable!("a stair has an approach"));
+                assert!(!keep_clear.contains(&approach), "seed {seed}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_floor_with_every_tile_kept_clear_has_no_stair_anchor() {
+        let floor = rectangle(MapTile::new(3200, 3200), 3, 3);
+        let keep_clear: BTreeSet<MapTile> = floor.iter().copied().collect();
+        let all_clear = layout(&floor, &keep_clear, |_| 0);
+        assert!(matches!(
+            plan_vertical_connectivity_in_layouts(request(0, 2), &[all_clear.clone(), all_clear]),
+            Err(BuildingVerticalError::NoStairAnchor { .. })
+        ));
+    }
+
+    #[test]
+    fn a_stair_and_its_approach_stand_in_one_room_on_both_floors() {
+        // Two rooms side by side below (split at x 3203), one room above.
+        let floor = rectangle(MapTile::new(3200, 3200), 6, 4);
+        let none = BTreeSet::new();
+        let lower = layout(&floor, &none, |t| u16::from(t.x >= 3203));
+        let upper = layout(&floor, &none, |_| 0);
+        for seed in 0..64 {
+            let mut request = request(0, 2);
+            request.seed = seed;
+            let plan =
+                plan_vertical_connectivity_in_layouts(request, &[lower.clone(), upper.clone()])
+                    .unwrap_or_else(|e| panic!("{e:?}"));
+            for stair in plan.stairs() {
+                let approach = stair
+                    .approach_tile()
+                    .unwrap_or_else(|| unreachable!("a stair has an approach"));
+                assert_eq!(lower.room_of[&stair.tile], lower.room_of[&approach]);
+            }
+        }
+    }
+
+    #[test]
+    fn a_stair_stands_against_a_wall_when_one_is_available() {
+        let floor = rectangle(MapTile::new(3200, 3200), 5, 5);
+        let none = BTreeSet::new();
+        let open = layout(&floor, &none, |_| 0);
+        for seed in 0..64 {
+            let mut request = request(0, 2);
+            request.seed = seed;
+            let plan =
+                plan_vertical_connectivity_in_layouts(request, &[open.clone(), open.clone()])
+                    .unwrap_or_else(|e| panic!("{e:?}"));
+            let stair = plan.stairs()[0];
+            let behind = stair
+                .facing
+                .opposite()
+                .neighbor(stair.tile)
+                .unwrap_or_else(|| unreachable!("a neighbour exists"));
+            assert!(
+                !floor.contains(&behind),
+                "seed {seed}: {stair:?} is not against a wall"
+            );
         }
     }
 

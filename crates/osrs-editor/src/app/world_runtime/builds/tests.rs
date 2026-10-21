@@ -126,7 +126,7 @@ fn current_result_finishes_with_original_scope() {
     let scope = RegionBuildScope::Zones(BTreeSet::from([(400, 400), (401, 400)]));
     tracker.request((50, 50), scope.clone(), 7);
 
-    assert_eq!(tracker.finish((50, 50), 7), Some(scope));
+    assert_eq!(finish_scope(&mut tracker, (50, 50), 7), Some(scope));
     assert_eq!(tracker.len(), 0);
 }
 
@@ -136,7 +136,7 @@ fn edit_epoch_rejects_old_result_and_retires_request() {
     tracker.request((50, 50), RegionBuildScope::Full, 7);
     tracker.invalidate((50, 50));
 
-    assert_eq!(tracker.finish((50, 50), 7), None);
+    assert_eq!(finish_scope(&mut tracker, (50, 50), 7), None);
     assert_eq!(tracker.len(), 0);
 }
 
@@ -151,10 +151,10 @@ fn cancelled_old_result_cannot_consume_newer_request() {
         7,
     );
 
-    assert_eq!(tracker.finish((50, 50), 7), None);
+    assert_eq!(finish_scope(&mut tracker, (50, 50), 7), None);
     assert_eq!(tracker.len(), 1);
     assert_eq!(
-        tracker.finish((50, 50), 7),
+        finish_scope(&mut tracker, (50, 50), 7),
         Some(RegionBuildScope::Zones(BTreeSet::from([(400, 400)])))
     );
     assert_eq!(tracker.len(), 0);
@@ -166,7 +166,7 @@ fn presentation_change_rejects_old_result() {
     tracker.request((50, 50), RegionBuildScope::Full, 7);
     tracker.cancel_all();
 
-    assert_eq!(tracker.finish((50, 50), 8), None);
+    assert_eq!(finish_scope(&mut tracker, (50, 50), 8), None);
 }
 
 #[test]
@@ -177,7 +177,10 @@ fn source_reset_discards_unreachable_old_tickets() {
     tracker.reset_source();
     tracker.request((50, 50), RegionBuildScope::Full, 1);
 
-    assert_eq!(tracker.finish((50, 50), 1), Some(RegionBuildScope::Full));
+    assert_eq!(
+        finish_scope(&mut tracker, (50, 50), 1),
+        Some(RegionBuildScope::Full)
+    );
 }
 
 #[test]
@@ -190,7 +193,7 @@ fn diagnostic_build_events_preserve_fifo_freshness_and_reset_source_identity() {
     tracker.observe_invalidation(12, vec![RegionCoord::new(0, 0)], "terrain zones");
     tracker.request((0, 0), RegionBuildScope::Full, 3);
     tracker.invalidate((0, 0));
-    assert_eq!(tracker.finish((0, 0), 3), None);
+    assert_eq!(finish_scope(&mut tracker, (0, 0), 3), None);
     let lines = sink.explain(MapTile::new(0, 0), 0);
     assert!(
         lines
@@ -201,10 +204,21 @@ fn diagnostic_build_events_preserve_fifo_freshness_and_reset_source_identity() {
     tracker.reset_source();
     assert!(sink.explain(MapTile::new(0, 0), 0).is_empty());
     tracker.request((0, 0), RegionBuildScope::Full, 3);
-    assert_eq!(tracker.finish((0, 0), 3), Some(RegionBuildScope::Full));
+    assert_eq!(
+        finish_scope(&mut tracker, (0, 0), 3),
+        Some(RegionBuildScope::Full)
+    );
     assert!(
         sink.explain(MapTile::new(0, 0), 0)
             .iter()
             .any(|line| line.contains("build 1/2: ticket accepted"))
     );
+}
+
+fn finish_scope(
+    tracker: &mut BuildTracker,
+    key: RegionKey,
+    generation: u32,
+) -> Option<RegionBuildScope> {
+    tracker.finish(key, generation).map(RegionBuild::into_scope)
 }

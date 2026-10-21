@@ -42,7 +42,7 @@ count                  log how many objects the camera's region has
 hud tile|stats|minimap|outline on|off|toggle
 window settings|plugins|script|map|teleport|none   open a window (or close all)
 grid                   toggle the tile grid
-project save|open PATH write / read a project file (Save returns at once; wait for it)
+project save|open|snapshot PATH  project file or separate authored snapshot (writes are asynchronous)
 export validate|review|write PATH|inspect PATH  native export workflow
 camera fly|orbit
 pose YAW PITCH [HEIGHT]  set the view in degrees (and height above the plane), for measurement scripts
@@ -56,6 +56,7 @@ place ID X Y [TURNS]  place an object from the catalog at a tile
 inspect X Y            log a tile's projected and document values (smoke tests)
 prefab capture NAME X0 Y0 X1 Y1 [PLANES] | place NAME X Y [TURNS] [replace]
                        studio NAME|save|new|revert|exit|report\n\
+                       reproduce PATH [failure=SEED]  save frozen building attempt (native)\n\
                        build X Y W H SEED [kind=bank] [kit=1] [apply] | list
 status TEXT
 # a comment";

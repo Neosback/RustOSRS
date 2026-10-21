@@ -14,6 +14,7 @@ use osrs_core::{
     entity::ActorSequenceState,
     ids::{NpcId, VarpId},
     player::PlayerLook,
+    provenance::TargetProvenance,
     scenario::{ActorLocation, NpcSpawnId},
 };
 use osrs_playtest::runtime::RuntimeAssets;
@@ -29,6 +30,7 @@ pub struct NpcAssetsUpdate {
     pub errors: Vec<String>,
 }
 /// A player standing in the world, with its look and where its idle animation is.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlayerFrame {
     /// Echoed in the result so the caller can tell which request it answers.
     pub token: u64,
@@ -50,8 +52,33 @@ pub struct NpcFrameInput {
 }
 pub struct NpcGeometryUpdate {
     pub stamp: PlaytestStamp,
+    pub context: ActorGeometryContext,
     pub geometry: SceneGeometry,
     pub errors: Vec<String>,
+}
+
+/// Source/profile facts captured by the worker that actually performed actor extraction.
+/// Actor and static-region extraction share the Reference/HD/fallback path vocabulary.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActorGeometryContext {
+    pub target: Arc<TargetProvenance>,
+    pub presentation_generation: u32,
+    pub render_path: crate::RegionRenderPath,
+}
+
+impl ActorGeometryContext {
+    fn capture(
+        definitions: &WorldDefinitions,
+        generation: u32,
+        requested: bool,
+        available: bool,
+    ) -> Self {
+        Self {
+            target: Arc::new(definitions.context().target_provenance().clone()),
+            presentation_generation: generation,
+            render_path: crate::RegionRenderPath::select(requested, available),
+        }
+    }
 }
 
 pub fn load_assets(
@@ -111,7 +138,16 @@ pub fn extract_npcs(
     definitions: &mut WorldDefinitions,
     input: NpcFrameInput,
     hd: Option<&HdContext>,
+    presentation_generation: u32,
+    hd_requested: bool,
 ) -> NpcGeometryUpdate {
+    let hd = hd.filter(|_| hd_requested);
+    let context = ActorGeometryContext::capture(
+        definitions,
+        presentation_generation,
+        hd_requested,
+        hd.is_some(),
+    );
     let mut geometry = SceneGeometry::default();
     let mut errors = Vec::new();
     for actor in &input.snapshot.actors {
@@ -180,6 +216,7 @@ pub fn extract_npcs(
     }
     NpcGeometryUpdate {
         stamp: input.snapshot.stamp,
+        context,
         geometry,
         errors,
     }
@@ -235,6 +272,7 @@ fn frame_at(delays: &[u16], cycles: u64) -> usize {
 
 pub struct PlayerGeometryUpdate {
     pub token: u64,
+    pub context: ActorGeometryContext,
     pub geometry: SceneGeometry,
     pub errors: Vec<String>,
 }
@@ -244,7 +282,16 @@ pub fn extract_player_frame(
     definitions: &mut WorldDefinitions,
     player: &PlayerFrame,
     hd: Option<&HdContext>,
+    presentation_generation: u32,
+    hd_requested: bool,
 ) -> PlayerGeometryUpdate {
+    let hd = hd.filter(|_| hd_requested);
+    let context = ActorGeometryContext::capture(
+        definitions,
+        presentation_generation,
+        hd_requested,
+        hd.is_some(),
+    );
     let mut geometry = SceneGeometry::default();
     let mut errors = Vec::new();
     if let Err(e) = extract_player(definitions, player, hd, &mut geometry) {
@@ -257,6 +304,7 @@ pub fn extract_player_frame(
     }
     PlayerGeometryUpdate {
         token: player.token,
+        context,
         geometry,
         errors,
     }

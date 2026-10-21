@@ -111,3 +111,5 @@ impl PreparedExport {
                 .any(|i| i.severity == IssueSeverity::Blocker)
     }
 }
+
+pub(crate) use output::publish_new_file;

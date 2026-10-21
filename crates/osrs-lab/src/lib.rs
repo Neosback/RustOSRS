@@ -23,8 +23,8 @@ pub use train::{Corpus, Progress, TrainRequest, train_model};
 mod env;
 mod generate;
 pub use generate::{
-    Brief, Generated, Verdict, archetype_of, census_buildings, generate, generate_named,
-    generated_prefab, judge_snapshot, kit_objects,
+    Brief, Generated, Verdict, VerdictFinding, archetype_of, census_buildings, generate,
+    generate_named, generated_prefab, judge_snapshot, kit_objects,
 };
 mod reconstruction;
 mod relocation;

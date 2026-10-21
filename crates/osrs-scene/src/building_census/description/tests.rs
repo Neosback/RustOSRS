@@ -111,8 +111,8 @@ fn open_shell_candidate_is_bounded_and_explicitly_incomplete() {
     }
     placements.retain(|p| p.tile.0 != 2 || p.kind != 0);
     assert!(pick_candidates(&area, &placements, &table, MapTile::new(4, 4), 0, None).is_empty());
-    let candidate =
-        incomplete_candidate(&area, &placements, &table, MapTile::new(4, 4), 0, None).unwrap();
+    let candidate = incomplete_candidate(&area, &placements, &table, MapTile::new(4, 4), 0, None)
+        .unwrap_or_else(|| panic!("expected bounded incomplete candidate"));
     assert!(
         candidate
             .description

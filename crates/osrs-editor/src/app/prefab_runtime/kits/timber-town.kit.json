@@ -1,8 +1,12 @@
 {
  "format": "rustosrs-building-kit",
- "version": 1,
+ "version": 2,
  "name": "Timber town",
  "notes": "Timber-frame walls, posh doors and windows, thatched roof; measured on real revision-240 buildings.",
+ "stairs": {
+  "up": {"id": 16683, "kind": 10, "orientations": [0, 1, 2, 3]},
+  "down": {"id": 16679, "kind": 10, "orientations": [0, 1, 2, 3]}
+ },
  "floor": {
   "underlay": null,
   "overlay": null

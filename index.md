@@ -15,6 +15,10 @@ Before starting implementation work, read:
 5. `docs/architecture/FEATURE-MAP.md` for existing tool implementations and tests;
 6. `docs/blueprint/17-IMPLEMENTATION-ROADMAP.md` for dependency/order and milestone reconciliation.
 
+The [technical architecture audit and rollout](docs/architecture/TECHNICAL-ARCHITECTURE-AUDIT.md) maps that target to the verified implementation boundary and dependency-ordered follow-up work.
+
+[Active projection contracts](docs/architecture/PROJECTION-CONTRACTS.md) record artifact owners, freshness, dependency expansion, stale-read/failure policy, regression evidence and remaining lifecycle gaps.
+
 The technical architecture specification is a target design document, not a substitute for live implementation state, OSRS semantic specifications, or accepted ADRs.
 
 The project is no longer at the blueprint/M0 entry point. M0-M16 have substantial or complete production implementation; the remaining program is concentrated in architecture extraction, Reference parity/certification closure, entity/runtime/playtest work, 117HD completion, export generalization, and project lifecycle/recovery work.

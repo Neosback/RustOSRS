@@ -251,3 +251,6 @@ impl eframe::App for EditorApp {
         ctx.request_repaint();
     }
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) use prefab_runtime::reproduce_cli;

@@ -1,0 +1,867 @@
+[
+  {
+    "name": "Bank",
+    "wiki": "Bank",
+    "archetype": "Bank",
+    "categories": [
+      "Banks"
+    ],
+    "plane": 0,
+    "facilities": [
+      "altar",
+      "bank_booth",
+      "deposit_box",
+      "furnace",
+      "poll_booth",
+      "range",
+      "stairs",
+      "water_source"
+    ],
+    "floors": 1
+  },
+  {
+    "name": "Al Kharid bank",
+    "wiki": "Al_Kharid_bank",
+    "archetype": "Bank",
+    "categories": [
+      "Banks"
+    ],
+    "worldX": 3269,
+    "worldY": 3167,
+    "plane": 0,
+    "facilities": [
+      "bank_booth",
+      "deposit_box",
+      "poll_booth",
+      "water_source"
+    ],
+    "floors": 1,
+    "occupants": [
+      "bankers"
+    ],
+    "location": "Al Kharid",
+    "leagueRegion": "Desert"
+  },
+  {
+    "name": "Aldarin bank",
+    "wiki": "Aldarin_bank",
+    "archetype": "Bank",
+    "categories": [
+      "Banks"
+    ],
+    "worldX": 1399,
+    "worldY": 2927,
+    "plane": 0,
+    "polygon": [
+      [
+        1399,
+        2927
+      ]
+    ],
+    "facilities": [
+      "bank_booth",
+      "deposit_box",
+      "poll_booth"
+    ],
+    "floors": 1,
+    "occupants": [
+      "2 tellers"
+    ],
+    "location": "Aldarin",
+    "leagueRegion": "Varlamore"
+  },
+  {
+    "name": "Ape Atoll bank",
+    "wiki": "Ape_Atoll_bank",
+    "archetype": "Bank",
+    "categories": [
+      "Banks"
+    ],
+    "worldX": 2781,
+    "worldY": 2784,
+    "plane": 0,
+    "facilities": [
+      "bank_booth",
+      "deposit_box",
+      "poll_booth"
+    ],
+    "floors": 1,
+    "occupants": [
+      "1"
+    ],
+    "location": "Eastern Marim",
+    "leagueRegion": "Kandarin"
+  },
+  {
+    "name": "Arceuus bank",
+    "wiki": "Arceuus_bank",
+    "archetype": "Bank",
+    "categories": [
+      "Banks"
+    ],
+    "worldX": 1630,
+    "worldY": 3748,
+    "plane": 0,
+    "polygon": [
+      [
+        1621,
+        3754
+      ],
+      [
+        1621,
+        3736
+      ],
+      [
+        1639,
+        3736
+      ],
+      [
+        1639,
+        3754
+      ],
+      [
+        1633,
+        3754
+      ],
+      [
+        1633,
+        3751
+      ],
+      [
+        1627,
+        3751
+      ],
+      [
+        1627,
+        3754
+      ]
+    ],
+    "facilities": [
+      "bank_booth",
+      "deposit_box",
+      "poll_booth"
+    ],
+    "floors": 1,
+    "occupants": [
+      "Arceuus bankers"
+    ],
+    "location": "Southern Arceuus",
+    "leagueRegion": "Kourend"
+  },
+  {
+    "name": "Ardougne north bank",
+    "wiki": "Ardougne_north_bank",
+    "archetype": "Bank",
+    "categories": [
+      "Banks"
+    ],
+    "worldX": 2617,
+    "worldY": 3334,
+    "plane": 0,
+    "polygon": [
+      [
+        2612,
+        3336
+      ],
+      [
+        2612,
+        3330
+      ],
+      [
+        2622,
+        3330
+      ],
+      [
+        2622,
+        3336
+      ],
+      [
+        2619,
+        3336
+      ],
+      [
+        2619,
+        3335
+      ],
+      [
+        2615,
+        3335
+      ],
+      [
+        2615,
+        3336
+      ]
+    ],
+    "facilities": [
+      "bank_booth",
+      "deposit_box",
+      "poll_booth"
+    ],
+    "floors": 1,
+    "occupants": [
+      "bankers"
+    ],
+    "location": "North Ardougne",
+    "leagueRegion": "Kandarin"
+  },
+  {
+    "name": "Ardougne south bank",
+    "wiki": "Ardougne_south_bank",
+    "archetype": "Bank",
+    "categories": [
+      "Banks"
+    ],
+    "worldX": 2652,
+    "worldY": 3284,
+    "plane": 0,
+    "polygon": [
+      [
+        2649,
+        3288
+      ],
+      [
+        2649,
+        3285
+      ],
+      [
+        2652,
+        3285
+      ],
+      [
+        2652,
+        3283
+      ],
+      [
+        2649,
+        3283
+      ],
+      [
+        2649,
+        3280
+      ],
+      [
+        2659,
+        3280
+      ],
+      [
+        2659,
+        3288
+      ]
+    ],
+    "facilities": [
+      "bank_booth",
+      "deposit_box",
+      "poll_booth"
+    ],
+    "floors": 3,
+    "occupants": [
+      "bankers"
+    ],
+    "location": "Ardougne",
+    "leagueRegion": "Kandarin"
+  },
+  {
+    "name": "Auburnvale bank",
+    "wiki": "Auburnvale_bank",
+    "archetype": "Bank",
+    "categories": [
+      "Banks"
+    ],
+    "worldX": 1416,
+    "worldY": 3353,
+    "plane": 0,
+    "polygon": [
+      [
+        1416,
+        3353
+      ]
+    ],
+    "facilities": [
+      "bank_booth",
+      "deposit_box",
+      "poll_booth"
+    ],
+    "floors": 1,
+    "occupants": [
+      "4 tellers"
+    ],
+    "location": "Auburnvale",
+    "leagueRegion": "Varlamore"
+  },
+  {
+    "name": "Bank Chest-wreck",
+    "wiki": "Bank_Chest-wreck",
+    "archetype": "Bank",
+    "categories": [
+      "Banks"
+    ],
+    "worldX": 3767,
+    "worldY": 3899,
+    "plane": 0,
+    "facilities": [
+      "range"
+    ],
+    "floors": 1
+  },
+  {
+    "name": "Bank boat",
+    "wiki": "Bank_boat",
+    "archetype": "Bank",
+    "categories": [
+      "Banks"
+    ],
+    "worldX": 2280,
+    "worldY": 2544,
+    "plane": 0,
+    "facilities": [
+      "bank_booth",
+      "range",
+      "water_source"
+    ],
+    "floors": 1
+  },
+  {
+    "name": "Buildable bank chests",
+    "wiki": "Buildable_bank_chests",
+    "archetype": "Bank",
+    "categories": [
+      "Banks"
+    ],
+    "worldX": 3742,
+    "worldY": 3805,
+    "plane": 0,
+    "floors": 1
+  },
+  {
+    "name": "Burgh de Rott bank",
+    "wiki": "Burgh_de_Rott_bank",
+    "archetype": "Bank",
+    "categories": [
+      "Banks"
+    ],
+    "worldX": 3496,
+    "worldY": 3211,
+    "plane": 0,
+    "facilities": [
+      "bank_booth",
+      "deposit_box",
+      "poll_booth"
+    ],
+    "floors": 1,
+    "occupants": [
+      "Cornelius"
+    ],
+    "location": "Burgh de Rott",
+    "leagueRegion": "Morytania"
+  },
+  {
+    "name": "Cam Torum bank",
+    "wiki": "Cam_Torum_bank",
+    "archetype": "Bank",
+    "categories": [
+      "Banks"
+    ],
+    "worldX": 1454,
+    "worldY": 9568,
+    "plane": 1,
+    "polygon": [
+      [
+        1454,
+        9568
+      ]
+    ],
+    "facilities": [
+      "bank_booth",
+      "deposit_box",
+      "poll_booth"
+    ],
+    "floors": 1,
+    "occupants": [
+      "4 tellers"
+    ],
+    "location": "Cam Torum",
+    "leagueRegion": "Varlamore"
+  },
+  {
+    "name": "Canifis bank",
+    "wiki": "Canifis_bank",
+    "archetype": "Bank",
+    "categories": [
+      "Banks"
+    ],
+    "worldX": 3511,
+    "worldY": 3478,
+    "plane": 0,
+    "polygon": [
+      [
+        3509,
+        3484
+      ],
+      [
+        3509,
+        3483
+      ],
+      [
+        3508,
+        3482
+      ],
+      [
+        3508,
+        3479
+      ],
+      [
+        3509,
+        3478
+      ],
+      [
+        3509,
+        3474
+      ],
+      [
+        3513,
+        3474
+      ],
+      [
+        3513,
+        3475
+      ],
+      [
+        3514,
+        3476
+      ],
+      [
+        3515,
+        3476
+      ],
+      [
+        3517,
+        3478
+      ],
+      [
+        3517,
+        3484
+      ]
+    ],
+    "facilities": [
+      "bank_booth",
+      "deposit_box",
+      "poll_booth",
+      "water_source"
+    ],
+    "floors": 1,
+    "occupants": [
+      "Canifis bankers"
+    ],
+    "location": "Canifis",
+    "leagueRegion": "Morytania"
+  },
+  {
+    "name": "Catherby bank",
+    "wiki": "Catherby_bank",
+    "archetype": "Bank",
+    "categories": [
+      "Banks"
+    ],
+    "worldX": 2809,
+    "worldY": 3442,
+    "plane": 0,
+    "polygon": [
+      [
+        2809,
+        3442
+      ]
+    ],
+    "facilities": [
+      "bank_booth",
+      "deposit_box",
+      "poll_booth"
+    ],
+    "floors": 1,
+    "occupants": [
+      "bankers"
+    ],
+    "location": "Catherby",
+    "leagueRegion": "Kandarin"
+  },
+  {
+    "name": "Corsair Cove bank",
+    "wiki": "Corsair_Cove_bank",
+    "archetype": "Bank",
+    "categories": [
+      "Banks"
+    ],
+    "worldX": 2570,
+    "worldY": 2865,
+    "plane": 0,
+    "facilities": [
+      "altar",
+      "bank_booth",
+      "deposit_box",
+      "poll_booth"
+    ],
+    "floors": 1,
+    "occupants": [
+      "Yusuf"
+    ],
+    "location": "Corsair Cove",
+    "leagueRegion": "Kandarin"
+  },
+  {
+    "name": "Darkmeyer bank",
+    "wiki": "Darkmeyer_bank",
+    "archetype": "Bank",
+    "categories": [
+      "Banks"
+    ],
+    "worldX": 3605,
+    "worldY": 3368,
+    "plane": 0,
+    "polygon": [
+      [
+        3601,
+        3365
+      ],
+      [
+        3610,
+        3365
+      ],
+      [
+        3610,
+        3371
+      ],
+      [
+        3601,
+        3371
+      ]
+    ],
+    "facilities": [
+      "bank_booth",
+      "deposit_box",
+      "poll_booth"
+    ],
+    "floors": 1,
+    "occupants": [
+      "vampyre bankers"
+    ],
+    "location": "Northern Darkmeyer",
+    "leagueRegion": "Morytania"
+  },
+  {
+    "name": "Bank Deposit Box",
+    "wiki": "Bank_Deposit_Box",
+    "archetype": "Bank",
+    "categories": [
+      "Banks"
+    ],
+    "worldX": 1744,
+    "worldY": 5475,
+    "plane": 0,
+    "facilities": [
+      "bank_booth",
+      "deposit_box",
+      "furnace",
+      "range",
+      "water_source"
+    ],
+    "floors": 1
+  },
+  {
+    "name": "Dorgesh-Kaan bank",
+    "wiki": "Dorgesh-Kaan_bank",
+    "archetype": "Bank",
+    "categories": [
+      "Banks"
+    ],
+    "worldX": 2702,
+    "worldY": 5350,
+    "plane": 0,
+    "facilities": [
+      "bank_booth",
+      "deposit_box",
+      "poll_booth"
+    ],
+    "floors": 1,
+    "occupants": [
+      "goblin bankers"
+    ],
+    "location": "North-eastern Dorgesh-Kaan",
+    "leagueRegion": "Misthalin"
+  },
+  {
+    "name": "Draynor bank",
+    "wiki": "Draynor_bank",
+    "archetype": "Bank",
+    "categories": [
+      "Banks"
+    ],
+    "worldX": 3093,
+    "worldY": 3243,
+    "plane": 0,
+    "polygon": [
+      [
+        3093,
+        3243
+      ]
+    ],
+    "facilities": [
+      "bank_booth",
+      "deposit_box",
+      "poll_booth"
+    ],
+    "floors": 1,
+    "occupants": [
+      "bankers"
+    ],
+    "location": "Draynor Village",
+    "leagueRegion": "Misthalin"
+  },
+  {
+    "name": "Edgeville bank",
+    "wiki": "Edgeville_bank",
+    "archetype": "Bank",
+    "categories": [
+      "Banks"
+    ],
+    "worldX": 3092,
+    "worldY": 3494,
+    "plane": 0,
+    "polygon": [
+      [
+        3091,
+        3500
+      ],
+      [
+        3091,
+        3498
+      ],
+      [
+        3090,
+        3497
+      ],
+      [
+        3090,
+        3494
+      ],
+      [
+        3091,
+        3493
+      ],
+      [
+        3091,
+        3488
+      ],
+      [
+        3099,
+        3488
+      ],
+      [
+        3099,
+        3500
+      ]
+    ],
+    "facilities": [
+      "bank_booth",
+      "deposit_box",
+      "furnace",
+      "poll_booth",
+      "range",
+      "water_source"
+    ],
+    "floors": 1,
+    "occupants": [
+      "bankers"
+    ],
+    "location": "Edgeville",
+    "leagueRegion": "Misthalin"
+  },
+  {
+    "name": "Etceteria bank",
+    "wiki": "Etceteria_bank",
+    "archetype": "Bank",
+    "categories": [
+      "Banks"
+    ],
+    "worldX": 2620,
+    "worldY": 3895,
+    "plane": 0,
+    "facilities": [
+      "bank_booth",
+      "deposit_box",
+      "poll_booth"
+    ],
+    "floors": 1,
+    "occupants": [
+      "Etceteria banker"
+    ],
+    "location": "North-east Etceteria",
+    "leagueRegion": "Fremennik"
+  },
+  {
+    "name": "Falador east bank",
+    "wiki": "Falador_east_bank",
+    "archetype": "Bank",
+    "categories": [
+      "Banks"
+    ],
+    "worldX": 3016,
+    "worldY": 3356,
+    "plane": 0,
+    "polygon": [
+      [
+        3009,
+        3359
+      ],
+      [
+        3009,
+        3353
+      ],
+      [
+        3022,
+        3353
+      ],
+      [
+        3022,
+        3357
+      ],
+      [
+        3019,
+        3357
+      ],
+      [
+        3019,
+        3359
+      ]
+    ],
+    "facilities": [
+      "bank_booth",
+      "deposit_box",
+      "poll_booth"
+    ],
+    "floors": 1,
+    "occupants": [
+      "bankers"
+    ],
+    "location": "Eastern Falador",
+    "leagueRegion": "Asgarnia"
+  },
+  {
+    "name": "Falador west bank",
+    "wiki": "Falador_west_bank",
+    "archetype": "Bank",
+    "categories": [
+      "Banks"
+    ],
+    "worldX": 2946,
+    "worldY": 3366,
+    "plane": 0,
+    "polygon": [
+      [
+        2943,
+        3374
+      ],
+      [
+        2943,
+        3368
+      ],
+      [
+        2945,
+        3368
+      ],
+      [
+        2945,
+        3366
+      ],
+      [
+        2946,
+        3366
+      ],
+      [
+        2946,
+        3362
+      ],
+      [
+        2945,
+        3362
+      ],
+      [
+        2945,
+        3359
+      ],
+      [
+        2949,
+        3359
+      ],
+      [
+        2949,
+        3366
+      ],
+      [
+        2950,
+        3366
+      ],
+      [
+        2950,
+        3370
+      ],
+      [
+        2948,
+        3370
+      ],
+      [
+        2948,
+        3374
+      ]
+    ],
+    "facilities": [
+      "bank_booth",
+      "deposit_box",
+      "poll_booth"
+    ],
+    "floors": 2,
+    "occupants": [
+      "bankers"
+    ],
+    "location": "Western Falador",
+    "leagueRegion": "Asgarnia"
+  },
+  {
+    "name": "Farming Guild bank",
+    "wiki": "Farming_Guild_bank",
+    "archetype": "Bank",
+    "categories": [
+      "Banks"
+    ],
+    "worldX": 1249,
+    "worldY": 3761,
+    "plane": 0,
+    "polygon": [
+      [
+        1246,
+        3759
+      ],
+      [
+        1252,
+        3759
+      ],
+      [
+        1252,
+        3763
+      ],
+      [
+        1246,
+        3763
+      ]
+    ],
+    "facilities": [
+      "bank_booth",
+      "deposit_box",
+      "poll_booth"
+    ],
+    "floors": 1,
+    "occupants": [
+      "farmer bankers"
+    ],
+    "location": "Northern section of the Farming Guild",
+    "leagueRegion": "Kourend"
+  }
+]

@@ -10,7 +10,7 @@
 
 use crate::{MapOp, MapPatch, MapPosition, ObjectOrientation, ObjectPlacement};
 use osrs_core::coords::MapTile;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 const fn step(orientation: u8) -> (i32, i32) {
     match orientation & 3 {
@@ -42,21 +42,23 @@ struct Piece {
 fn place(
     pieces: &[Piece],
     index: usize,
-    owner: &mut HashMap<MapTile, usize>,
-    seen: &mut Vec<MapTile>,
+    owner: &mut HashMap<MapPosition, usize>,
+    reserved: &HashSet<MapPosition>,
+    seen: &mut Vec<MapPosition>,
     chosen: &mut [usize],
 ) -> bool {
     for (slot, (tile, _)) in pieces[index].homes.iter().enumerate() {
-        if seen.contains(tile) {
+        let position = MapPosition::new(*tile, pieces[index].placement.position.plane);
+        if reserved.contains(&position) || seen.contains(&position) {
             continue;
         }
-        seen.push(*tile);
-        let free = match owner.get(tile) {
+        seen.push(position);
+        let free = match owner.get(&position) {
             None => true,
-            Some(&other) => place(pieces, other, owner, seen, chosen),
+            Some(&other) => place(pieces, other, owner, reserved, seen, chosen),
         };
         if free {
-            owner.insert(*tile, index);
+            owner.insert(position, index);
             chosen[index] = slot;
             return true;
         }
@@ -65,10 +67,13 @@ fn place(
 }
 
 /// Rewrite the straight wall pieces (kind 0) of `patch` so that no tile holds more than one.
-/// Returns the patch and how many pieces could not be given a tile of their own.
+/// Fixed corner/pillar slots are reserved, independently on each source plane.
+/// Returns the patch and the count of unresolved movable or fixed boundary-slot conflicts.
 pub fn resolve_wall_slots(patch: &MapPatch) -> (MapPatch, usize) {
     let mut pieces: Vec<Piece> = Vec::new();
     let mut other: Vec<MapOp> = Vec::with_capacity(patch.ops().len());
+    let mut reserved = HashSet::new();
+    let mut unplaced = 0;
     for op in patch.ops() {
         match *op {
             MapOp::AddObject { placement } if placement.kind.get() == 0 => {
@@ -81,16 +86,30 @@ pub fn resolve_wall_slots(patch: &MapPatch) -> (MapPatch, usize) {
                     ],
                 });
             }
-            keep => other.push(keep),
+            keep => {
+                if let MapOp::AddObject { placement } = keep
+                    && (1..=3).contains(&placement.kind.get())
+                    && !reserved.insert(placement.position)
+                {
+                    unplaced += 1;
+                }
+                other.push(keep);
+            }
         }
     }
-    let mut owner: HashMap<MapTile, usize> = HashMap::new();
+    let mut owner: HashMap<MapPosition, usize> = HashMap::new();
     let mut chosen = vec![0usize; pieces.len()];
-    let mut unplaced = 0;
     let mut stuck: Vec<usize> = Vec::new();
     for index in 0..pieces.len() {
         let mut seen = Vec::new();
-        if !place(&pieces, index, &mut owner, &mut seen, &mut chosen) {
+        if !place(
+            &pieces,
+            index,
+            &mut owner,
+            &reserved,
+            &mut seen,
+            &mut chosen,
+        ) {
             unplaced += 1;
             stuck.push(index);
         }

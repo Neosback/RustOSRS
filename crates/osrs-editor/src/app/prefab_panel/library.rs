@@ -319,6 +319,7 @@ fn details(app: &mut EditorApp, ui: &mut egui::Ui, file: &str) {
     if ui.button("Edit this prefab").clicked() {
         crate::app::prefab_studio::request(app, file.to_owned());
     }
+    super::assemblies::show(app, ui, file, &prefab);
     place_controls(app, ui, file);
     ui.horizontal(|ui| {
         if ui

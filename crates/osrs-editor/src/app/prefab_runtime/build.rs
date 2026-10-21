@@ -4,9 +4,19 @@
 //! archetype, seed, kit), the kits available, and the last plan; it never touches the map.
 //! Applying a preview is the panel's job and goes through the edit gateway.
 
+#[cfg(not(target_arch = "wasm32"))]
 mod candidates;
 mod design;
+mod footprints;
 mod plan;
+mod preview;
+#[cfg(not(target_arch = "wasm32"))]
+pub(in crate::app) mod reproduction;
+use footprints::{FootprintInputs, SizeSource};
+use preview::PreviewInput;
+use std::sync::Arc;
+#[cfg(test)]
+mod tests;
 pub(in crate::app) use design::GenerationMode;
 use osrs_core::{
     coords::{MapTile, SourcePlane},
@@ -52,6 +62,11 @@ pub(in crate::app) const STYLES: [(BuildingStyle, &str); 4] = [
 
 /// What the form asks for.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    derive(serde::Serialize, serde::Deserialize)
+)]
+#[cfg_attr(not(target_arch = "wasm32"), serde(deny_unknown_fields))]
 pub(in crate::app) struct BuildForm {
     pub(in crate::app) archetype: BuildingArchetype,
     pub(in crate::app) style: BuildingStyle,
@@ -66,9 +81,22 @@ pub(in crate::app) struct BuildForm {
     pub(in crate::app) clear_site: bool,
     pub(in crate::app) name: String,
     pub(in crate::app) mode: GenerationMode,
+    #[cfg_attr(
+        not(target_arch = "wasm32"),
+        serde(deserialize_with = "reproduction::form::required_option")
+    )]
     pub(in crate::app) stage: Option<osrs_edit::BuildingStage>,
+    #[cfg_attr(
+        not(target_arch = "wasm32"),
+        serde(deserialize_with = "reproduction::form::required_option")
+    )]
     pub(in crate::app) sketch: Option<osrs_edit::BuildingSketch>,
+    #[cfg_attr(not(target_arch = "wasm32"), serde(with = "reproduction::form::locks"))]
     pub(in crate::app) locks: Vec<osrs_edit::ObjectPlacement>,
+    #[cfg_attr(
+        not(target_arch = "wasm32"),
+        serde(with = "reproduction::form::region")
+    )]
     pub(in crate::app) region: Option<RectSite>,
 }
 
@@ -97,6 +125,7 @@ impl Default for BuildForm {
 /// One generated building, ready to apply or keep.
 #[derive(Debug, Clone)]
 pub(in crate::app) struct Preview {
+    input: Arc<PreviewInput>,
     pub(in crate::app) origin: MapTile,
     pub(in crate::app) base_plane: SourcePlane,
     pub(in crate::app) form: BuildForm,
@@ -130,14 +159,26 @@ pub(in crate::app) struct BuildState {
     pub(in crate::app) site_plane: u8,
     /// The next viewport click chooses the site.
     pub(in crate::app) choosing: bool,
-    pub(in crate::app) preview: Option<Preview>,
+    pub(super) preview: Option<Preview>,
     pub(in crate::app) error: Option<String>,
     /// What the preview was made from, so it refreshes only when this changes.
-    made_from: Option<(BuildForm, MapTile, u8, u64, u64)>,
+    made_from: Option<Arc<PreviewInput>>,
     #[cfg(not(target_arch = "wasm32"))]
     pending: Option<candidates::Job>,
-    pub(in crate::app) candidates: Vec<Preview>,
-    pub(in crate::app) failures: Vec<String>,
+    #[cfg(not(target_arch = "wasm32"))]
+    candidate_worker: Option<candidates::Worker>,
+    #[cfg(not(target_arch = "wasm32"))]
+    reproduction_export: Option<reproduction::ExportTask>,
+    pub(super) candidates: Vec<Preview>,
+    failures: Vec<FailedAttempt>,
+}
+
+/// A rejected attempt retains its actual request key and candidate seed, without a map snapshot.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FailedAttempt {
+    input: Arc<PreviewInput>,
+    form: BuildForm,
+    failure: plan::Failure,
 }
 
 impl Default for BuildState {
@@ -154,6 +195,10 @@ impl Default for BuildState {
             made_from: None,
             #[cfg(not(target_arch = "wasm32"))]
             pending: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            candidate_worker: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            reproduction_export: None,
             candidates: vec![],
             failures: vec![],
         };
@@ -165,47 +210,12 @@ impl Default for BuildState {
 }
 
 impl BuildState {
-    /// Explicit synchronous batch/script entry. Interactive previews use cancellable workers.
-    pub(in crate::app) fn refresh_for_script(
-        &mut self,
-        document: &MapDocument,
-        source: u64,
-        revision: u64,
-        size_of: &dyn Fn(ObjectId, LocKind) -> (u8, u8),
-    ) {
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            self.pending = None;
-        }
-        let Some(origin) = self.site else {
-            return;
-        };
-        let Some(plane) = SourcePlane::new(self.site_plane) else {
-            return;
-        };
-        let Some(kit) = self.kits.get(self.form.kit) else {
-            return;
-        };
-        self.made_from = Some((self.form.clone(), origin, self.site_plane, revision, source));
-        match plan::plan(&self.form, kit, document, origin, plane, size_of) {
-            Ok(preview) => {
-                self.candidates = vec![preview.clone()];
-                self.preview = Some(preview);
-                self.error = None;
-            }
-            Err(e) => {
-                self.preview = None;
-                self.error = Some(e);
-            }
-        }
-    }
-
     #[cfg(test)]
     pub(in crate::app) fn refresh(
         &mut self,
         document: &MapDocument,
         revision: u64,
-        size_of: &dyn Fn(ObjectId, LocKind) -> (u8, u8),
+        size_of: &SizeSource<'_>,
     ) {
         self.refresh_source(document, 0, revision, size_of);
         #[cfg(not(target_arch = "wasm32"))]
@@ -304,89 +314,15 @@ impl BuildState {
         self.form.variation = 0;
     }
 
-    /// Refresh the preview when the form, the site, the viewed plane or the map changed.
-    /// `map_revision` is any number that changes whenever the document does.
-    pub(in crate::app) fn refresh_source(
-        &mut self,
-        document: &MapDocument,
+    pub(in crate::app) fn to_prefab(
+        &self,
         source: u64,
-        map_revision: u64,
-        size_of: &dyn Fn(ObjectId, LocKind) -> (u8, u8),
-    ) {
-        #[cfg(not(target_arch = "wasm32"))]
-        if let Some(job) = &mut self.pending
-            && let Some(result) = job.poll()
-        {
-            self.pending = None;
-            self.candidates = result.0;
-            self.failures = result.1;
-            self.preview = self.candidates.first().cloned();
-            self.error = if self.preview.is_none() {
-                self.failures.first().cloned()
-            } else {
-                None
-            };
-        }
-        let Some(base_plane) = SourcePlane::new(self.site_plane) else {
-            self.error = Some("Invalid site plane".into());
-            return;
-        };
-        let Some(origin) = self.site else {
-            self.preview = None;
-            self.made_from = None;
-            #[cfg(not(target_arch = "wasm32"))]
-            {
-                self.pending = None;
-            }
-            self.candidates.clear();
-            return;
-        };
-        let key = (
-            self.form.clone(),
-            origin,
-            base_plane.index().get(),
-            map_revision,
-            source,
-        );
-        if self.made_from.as_ref() == Some(&key) {
-            return;
-        }
-        self.made_from = Some(key);
-        self.preview = None;
-        self.candidates.clear();
-        self.failures.clear();
-        let Some(kit) = self.kits.get(self.form.kit).cloned() else {
-            self.error = Some("Choose a kit first".into());
-            return;
-        };
-        let sizes = document
-            .object_entries()
-            .into_iter()
-            .map(|p| (p.object_id, size_of(p.object_id, p.kind)))
-            .collect();
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            self.pending = Some(candidates::Job::start(
-                document.clone(),
-                self.form.clone(),
-                kit,
-                origin,
-                base_plane,
-                sizes,
-            ));
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            let size_of = |id, kind| sizes.get(&id).copied().unwrap_or_else(|| size_of(id, kind));
-            match plan::plan(&self.form, &kit, document, origin, base_plane, &size_of) {
-                Ok(p) => self.preview = Some(p),
-                Err(e) => self.error = Some(e),
-            }
-        }
-    }
-
-    pub(in crate::app) fn to_prefab(&self) -> Result<Prefab, String> {
-        let preview = self.preview.as_ref().ok_or("generate a building first")?;
+        revision: u64,
+        size_of: &SizeSource<'_>,
+    ) -> Result<Prefab, String> {
+        let preview = self
+            .current_preview(source, revision, size_of)
+            .ok_or("generate a current building preview first")?;
         let form = &preview.form;
         let archetype = ARCHETYPES
             .iter()
@@ -426,6 +362,11 @@ fn describe(error: &osrs_edit::KitGenerateError) -> String {
     use osrs_edit::{BuildingGenerationError as G, KitGenerateError as K};
     match error {
         K::Design(message) => message.to_string(),
+        K::MissingStairs => {
+            "this kit needs reviewed up/down stair assets before generating multiple floors"
+                .to_owned()
+        }
+        K::Stairs(error) => format!("the stairs could not be placed ({error:?})"),
         K::RoofPlane { plane } => format!("the roof would need plane {plane}, above the top plane"),
         K::Generation(G::UnsupportedFloorCount { floors }) => {
             format!("{floors} floors are not supported yet")

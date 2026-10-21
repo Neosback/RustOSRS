@@ -5,6 +5,8 @@ mod membership;
 mod metadata;
 mod options;
 pub(in crate::app) mod refine;
+#[cfg(not(target_arch = "wasm32"))]
+mod worker;
 use crate::app::EditorApp;
 pub(in crate::app) use analysis::{start, start_selection};
 use eframe::egui;
@@ -26,10 +28,13 @@ use std::collections::{BTreeMap, BTreeSet};
 #[derive(Default)]
 pub(in crate::app) struct CaptureReview {
     #[cfg(not(target_arch = "wasm32"))]
-    pending: Option<std::sync::mpsc::Receiver<Result<Review, String>>>,
+    pending: Option<worker::Job>,
+    #[cfg(not(target_arch = "wasm32"))]
+    worker: Option<worker::Worker>,
     review: Option<Review>,
     refining: bool,
     open: bool,
+    #[cfg(not(target_arch = "wasm32"))]
     additive: bool,
     layer: refine::Layer,
 }
@@ -70,38 +75,119 @@ struct RoomChoice {
     role: String,
 }
 
+impl Review {
+    fn is_current(&self, revision: u64, source: u64) -> bool {
+        (self.revision, self.source) == (revision, source)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn admit(self, revision: u64, source: u64) -> Result<Self, String> {
+        if !self.is_current(revision, source) {
+            return Err("The map changed during analysis. Review the building again.".into());
+        }
+        Ok(self)
+    }
+
+    fn capture_spec(
+        &self,
+        document: &MapDocument,
+        revision: u64,
+        source: u64,
+    ) -> Result<BuildingCaptureSpec, String> {
+        if !self.is_current(revision, source) {
+            return Err("The map changed. Review the building again before capture.".into());
+        }
+        intent(self, document)
+    }
+}
+
+impl CaptureReview {
+    fn clear(&mut self) {
+        #[cfg(not(target_arch = "wasm32"))]
+        let worker = self.worker.take();
+        *self = Self::default();
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.worker = worker;
+        }
+    }
+
+    fn is_current(&self, revision: u64, source: u64) -> bool {
+        let current = self
+            .review
+            .as_ref()
+            .is_none_or(|r| r.is_current(revision, source));
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            current
+                && self
+                    .pending
+                    .as_ref()
+                    .is_none_or(|j| j.is_current(revision, source))
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            current
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn start(
+        &mut self,
+        revision: u64,
+        source: u64,
+        work: impl FnOnce() -> Result<Review, String> + Send + 'static,
+    ) {
+        self.pending = None;
+        self.review = None;
+        if self.worker.as_ref().is_none_or(worker::Worker::is_finished) {
+            self.worker = Some(worker::Worker::new());
+        }
+        if let Some(worker) = &mut self.worker {
+            self.pending = Some(worker.start(revision, source, work));
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn poll_response(&mut self, revision: u64, source: u64) -> Option<Result<Review, String>> {
+        if !self.is_current(revision, source) {
+            self.clear();
+            return Some(Err(
+                "The map changed during analysis. Review the building again.".into(),
+            ));
+        }
+        let job = self.pending.as_ref()?;
+        let result = match job.receive.try_recv() {
+            Ok(result) => result.and_then(|review| review.admit(revision, source)),
+            Err(std::sync::mpsc::TryRecvError::Empty) => return None,
+            Err(_) => Err("Building analysis stopped before completion.".into()),
+        };
+        self.pending = None;
+        if result.is_err() {
+            self.clear();
+        }
+        Some(result)
+    }
+}
+
 pub(super) fn poll(
     #[cfg_attr(target_arch = "wasm32", allow(unused_variables))] app: &mut EditorApp,
 ) {
     #[cfg(not(target_arch = "wasm32"))]
-    if let Some(receiver) = &app.prefabs.capture_review.pending {
-        match receiver.try_recv() {
-            Ok(result) => {
-                app.prefabs.capture_review.pending = None;
-                match result {
-                    Ok(review)
-                        if review.source == app.project.generation()
-                            && review.revision == app.session.map_revision() =>
-                    {
-                        let additive = app.prefabs.capture_review.additive;
-                        refine::project(app, &review, additive);
-                        app.prefabs.capture_review.review = Some(review);
-                        app.prefabs.say(
-                            "Building selected. Shift adds, Alt removes; Enter reviews capture.",
-                        );
-                    }
-                    Ok(_) => app
-                        .prefabs
-                        .say("The map changed during analysis. Review the building again."),
-                    Err(error) => app.prefabs.say(error),
-                }
-            }
-            Err(std::sync::mpsc::TryRecvError::Empty) => {}
-            Err(_) => {
-                app.prefabs.capture_review.pending = None;
+    if let Some(result) = app
+        .prefabs
+        .capture_review
+        .poll_response(app.session.revision(), app.project.generation())
+    {
+        match result {
+            Ok(review) => {
+                let additive = app.prefabs.capture_review.additive;
+                refine::project(app, &review, additive);
+                app.prefabs.capture_review.review = Some(review);
                 app.prefabs
-                    .say("Building analysis stopped before completion.");
+                    .say("Building selected. Shift adds, Alt removes; Enter reviews capture.");
             }
+            Err(error) => app.prefabs.say(error),
         }
     }
 }
@@ -110,11 +196,15 @@ pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
     if !app.prefabs.capture_review.open {
         return;
     }
+    if refine::retire_stale(app) {
+        ui.label("Map changed: refresh the building review.");
+        return;
+    }
     refine::controls(app, ui);
     let Some(review) = &mut app.prefabs.capture_review.review else {
         return;
     };
-    if review.source != app.project.generation() || review.revision != app.session.map_revision() {
+    if !review.is_current(app.session.revision(), app.project.generation()) {
         ui.label("Map changed: refresh the building review.");
         return;
     }
@@ -276,31 +366,34 @@ pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
         )
         .clicked();
     let cancel = ui.button("Cancel building capture").clicked();
-    #[cfg(not(target_arch = "wasm32"))]
-    let replacement = if rebuild {
+    let replacement = rebuild.then(|| {
         let mut next = review.clone();
         next.confirmed = false;
-        let (send, receive) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            membership::refresh(&mut next);
-            let _ = send.send(Ok(next));
-        });
-        Some(receive)
-    } else {
-        None
-    };
-    let spec = save.then(|| intent(review, app.session.document()));
+        next
+    });
+    let spec = save.then(|| {
+        review.capture_spec(
+            app.session.document(),
+            app.session.revision(),
+            app.project.generation(),
+        )
+    });
+    if cancel {
+        refine::cancel(app);
+        return;
+    }
     #[cfg(not(target_arch = "wasm32"))]
-    if let Some(pending) = replacement {
-        app.prefabs.capture_review.pending = Some(pending);
-        app.prefabs.capture_review.review = None;
+    if let Some(mut next) = replacement {
+        app.prefabs
+            .capture_review
+            .start(next.revision, next.source, move || {
+                membership::refresh(&mut next);
+                Ok(next)
+            });
         return;
     }
     #[cfg(target_arch = "wasm32")]
-    let _ = rebuild;
-    if cancel {
-        refine::cancel(app);
-    }
+    let _ = replacement;
     if let Some(spec) = spec {
         let name = if app.prefabs.form.name.trim().is_empty() {
             "Captured building"

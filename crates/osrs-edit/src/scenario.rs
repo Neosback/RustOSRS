@@ -73,6 +73,20 @@ impl ScenarioPatch {
 }
 
 impl ScenarioDocument {
+    /// Construct a fresh authored baseline, validating the complete definition before ownership.
+    /// Revision and history observations are not content and begin at zero.
+    pub fn from_definition(
+        definition: Option<ScenarioDefinition>,
+    ) -> Result<Self, ScenarioPlanError> {
+        if let Some(value) = &definition {
+            value.validate().map_err(ScenarioPlanError::Invalid)?;
+        }
+        Ok(Self {
+            definition,
+            revision: 0,
+        })
+    }
+
     pub fn definition(&self) -> Option<&ScenarioDefinition> {
         self.definition.as_ref()
     }
@@ -307,6 +321,22 @@ mod tests {
             seed: 7,
             spawns: Vec::new(),
         }
+    }
+
+    #[test]
+    fn validated_baseline_constructor_preserves_optional_content_without_revision_changes() {
+        let none = ScenarioDocument::from_definition(None).unwrap();
+        let present = ScenarioDocument::from_definition(Some(empty())).unwrap();
+        assert_ne!(none, present);
+        assert_eq!(present.definition(), Some(&empty()));
+        assert_eq!(present.revision(), 0);
+        let mut invalid = empty();
+        invalid.version = 99;
+        assert!(ScenarioDocument::from_definition(Some(invalid)).is_err());
+        let workspace =
+            WorkspaceDocument::from_parts(crate::MapDocument::default(), present.clone());
+        assert_eq!(workspace.scenario(), &present);
+        assert_eq!(workspace.map_revision(), 0);
     }
 
     fn workspace_with_scenario() -> (WorkspaceDocument, WorkspaceHistory) {

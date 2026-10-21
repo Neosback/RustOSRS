@@ -1,6 +1,6 @@
 # Reference Fixture Contracts
 
-Status: **M5 reference fixture infrastructure contract**
+Status: **Normalized fixture contract; normal executors and edge corpus updated 2026-10-19**
 
 This document defines how source-derived fixtures are organized, regenerated, normalized, reviewed, and consumed by Rust tests.
 
@@ -116,11 +116,19 @@ Use when a production RustOSRS semantic executor already exists.
 
 The M5 runner must execute the normalized input through production code and compare exact typed output.
 
-M5 semantic kinds:
+Production-backed semantic kinds:
 
 - `model_selection`;
 - `model_mirror`;
-- `model_transform`.
+- `model_transform`;
+- `plane_link_below`;
+- `base_normals`;
+- `normal_merge`.
+
+The canonical runner executes every discovered normal manifest against `osrs-core::normals`,
+including the five original M5 cases and five added edge cases. The earlier M7 tests still protect
+source immutability and scene lifecycle separately. Normal manifests cannot downgrade execution to
+`evidence_only`; wrong exact expected values fail the runner.
 
 ### `evidence_only`
 
@@ -134,16 +142,25 @@ The runner still validates:
 - expected-output SHA-256;
 - deterministic inventory inclusion.
 
-M5 evidence-only kinds:
-
-- `base_normals`;
-- `normal_merge`;
-- `plane_link_below`;
-- `priority_order`.
+The canonical inventory runner currently permits `evidence_only` only for `priority_order`.
+The renderer's separate `m10_face_preparation` test executes that pinned priority fixture through
+the production render owner. This is a runner dependency boundary, not missing production ordering.
 
 An implemented semantic kind cannot be downgraded to `evidence_only`. This is permanently regression-tested.
 
 Evidence-only fixtures are contracts for later owners, not claims that the production behavior is already implemented.
+
+### Pinned normal-method replay
+
+[`scripts/normal_oracle`](../../scripts/normal_oracle/README.md) verifies exact external source bytes,
+extracts unchanged base-normal/bounds/merge method bodies and executes them in a storage-only Java
+shell. Its candidate-only output path refuses accepted fixture locations and existing directories.
+The five new P1 fixtures preserve mixed face types, two-vertex matches, flat-neighbor exclusion,
+signed XYZ translation and duplicate matching-pair accumulation. Manifests pin the complete adapter
+and external sources; the historical fixtures retain their manual-normalization provenance.
+
+This is independent numeric method evidence. It does not prove scene traversal, renderer pixels or
+build-241-specific behavior beyond the declared revision-235 source contract.
 
 ## 6. Input normalization
 

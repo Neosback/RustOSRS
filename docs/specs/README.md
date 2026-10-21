@@ -68,6 +68,19 @@ Imported October 2026 RuneLite sources may independently corroborate a behavior,
 | `face-materials.md` | `FACE-001` through `FACE-004`, `TEXTURE-001` | Canonical semantic metadata + reference oracle |
 | `coordinates.md` | `COORD-001` through `COORD-003` | Canonical |
 
+## Editor policy contracts
+
+[Canonical map and transaction digests](semantic-digests.md) specifies RustOSRS versioned content
+identity. It is an editor protocol with independent byte vectors, not an upstream OSRS behavior claim.
+[Semantic map and patch transport](semantic-transport.md) defines validated lossless reproduction
+infrastructure over those canonical values, separate from project saves and recovery.
+[Building reproduction](building-reproduction.md) records a real product planner input contract and
+native headless semantic verifier, with explicit scope and outcome limits.
+[Rejected building reproduction](building-failure-reproduction.md) adds exact failed-attempt replay
+without a synthetic edit/history transaction; successful v1 bundles retain their original contract.
+[Authored snapshots](authored-snapshot.md) compose map, optional scenario and complete appearance
+through their canonical owners, separately from source-relative project saves, history and recovery.
+
 ## Promotion gates
 
 Before a new spec becomes `VERIFIED` it must have:

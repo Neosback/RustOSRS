@@ -94,7 +94,39 @@ pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
     if let Some(error) = app.prefabs.build.error.clone() {
         ui.colored_label(egui::Color32::LIGHT_RED, error);
     }
-    let Some(preview) = app.prefabs.build.preview.clone() else {
+    #[cfg(not(target_arch = "wasm32"))]
+    if let Some(seed) = app.prefabs.build.reproduction_seed(
+        app.project.generation(),
+        app.session.revision(),
+        &|id, _| app.placer.known_object_size(id.get()),
+    ) {
+        let source_ready = app
+            .prefabs
+            .build
+            .site_rect()
+            .is_some_and(|(origin, _, _)| app.world.source_target(origin).is_some());
+        if ui.add_enabled(
+            !app.prefabs.build.reproduction_running() && source_ready,
+            egui::Button::new("Save reproduction…"),
+        ).on_hover_text(format!("Save seed {seed}: the selected preview, or the first rejected attempt when no preview is usable. Existing report files are preserved."))
+            .clicked()
+            && let Some(path) = rfd::FileDialog::new()
+                .set_file_name(format!("building-reproduction-{seed}.json")).save_file()
+            && let Err(error) = export_reproduction(app, path)
+        {
+            app.ui.notify(error);
+        }
+    }
+    let Some(preview) = app
+        .prefabs
+        .build
+        .current_preview(
+            app.project.generation(),
+            app.session.revision(),
+            &|id, _| app.placer.known_object_size(id.get()),
+        )
+        .cloned()
+    else {
         if app.prefabs.build.site.is_none() {
             ui.weak("Choose where the building goes.");
         }
@@ -108,6 +140,7 @@ pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
         summary.push_str(&format!(", {} already there", preview.standing));
     }
     ui.colored_label(accent, summary);
+
     let roof_plane = preview
         .base_plane
         .index()
@@ -172,7 +205,11 @@ pub(super) fn show(app: &mut EditorApp, ui: &mut egui::Ui) {
         match app
             .prefabs
             .build
-            .to_prefab()
+            .to_prefab(
+                app.project.generation(),
+                app.session.revision(),
+                &|id, _| app.placer.known_object_size(id.get()),
+            )
             .and_then(|prefab| app.prefabs.add(prefab))
         {
             Ok(_) => {
@@ -275,13 +312,86 @@ fn site_controls(app: &mut EditorApp, ui: &mut egui::Ui) {
 
 /// Refresh the preview from the current map and form (called every frame the page is showing).
 pub(super) fn refresh(app: &mut EditorApp) {
-    let revision = app.session.map_revision();
-    let size_of =
-        |id: osrs_core::ids::ObjectId, _: osrs_edit::LocKind| app.placer.object_size(id.get());
+    let revision = app.session.revision();
+    let size_of = |id: osrs_core::ids::ObjectId, _: osrs_edit::LocKind| {
+        app.placer.known_object_size(id.get())
+    };
     app.prefabs.build.refresh_source(
         app.session.document(),
         app.project.generation(),
         revision,
         &size_of,
     );
+}
+
+/// Explicit source/current-preview boundary before a frozen report leaves the frame thread.
+#[cfg(not(target_arch = "wasm32"))]
+pub(in crate::app) fn export_reproduction(
+    app: &mut EditorApp,
+    path: std::path::PathBuf,
+) -> Result<(), String> {
+    export_reproduction_for(app, path, None)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(in crate::app) fn export_rejected_reproduction(
+    app: &mut EditorApp,
+    path: std::path::PathBuf,
+    seed: u64,
+) -> Result<(), String> {
+    export_reproduction_for(app, path, Some(seed))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn export_reproduction_for(
+    app: &mut EditorApp,
+    path: std::path::PathBuf,
+    rejected_seed: Option<u64>,
+) -> Result<(), String> {
+    if app.prefabs.build.reproduction_running() {
+        return Err("A reproduction export is already running".into());
+    }
+    let (origin, _, _) = app
+        .prefabs
+        .build
+        .site_rect()
+        .ok_or("Choose a building site first")?;
+    let target = app
+        .world
+        .source_target(origin)
+        .ok_or("Wait for the current source region before capturing reproduction")?;
+    let (build, profile) = app
+        .project
+        .cache_build()
+        .as_ref()
+        .ok_or("The source has not opened")?;
+    if profile != target.profile_id() {
+        return Err("The accepted region belongs to another source profile".into());
+    }
+    let identity = crate::app::prefab_runtime::ReproductionSource::new(target, *build);
+    let size_of = |id: osrs_core::ids::ObjectId, _: osrs_edit::LocKind| {
+        app.placer.known_object_size(id.get())
+    };
+    let capture = match rejected_seed {
+        Some(seed) => app.prefabs.build.freeze_rejected_reproduction(
+            app.session.document(),
+            app.project.generation(),
+            app.session.revision(),
+            &size_of,
+            identity,
+            seed,
+        ),
+        None => app.prefabs.build.freeze_reproduction(
+            app.session.document(),
+            app.project.generation(),
+            app.session.revision(),
+            &size_of,
+            identity,
+        ),
+    }
+    .map_err(|e| e.to_string())?;
+    app.prefabs.build.start_reproduction(capture, path)?;
+    app.ui
+        .set_status("Saving frozen building reproduction…".into());
+    Ok(())
 }

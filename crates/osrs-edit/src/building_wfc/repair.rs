@@ -91,12 +91,15 @@ mod tests {
             weight: 1,
             sockets: [WfcSocket(socket); 4],
         }))
-        .unwrap()
+        .unwrap_or_else(|error| panic!("{error:?}"))
     }
     fn pin(x: u16, pattern: u16) -> WfcConstraint {
         WfcConstraint {
             coord: WfcCoord::new(x, 0),
-            allowed: PatternDomain::singleton(WfcPatternId::new(pattern).unwrap()),
+            allowed: PatternDomain::singleton(
+                WfcPatternId::new(pattern)
+                    .unwrap_or_else(|| panic!("valid fixture pattern {pattern}")),
+            ),
         }
     }
     fn request() -> WfcRepairRequest {
@@ -115,8 +118,8 @@ mod tests {
     }
     #[test]
     fn repair_reports_only_soft_relaxations_and_preserves_every_lock() {
-        let report =
-            repair_wfc(&catalog(), request(), &[pin(5, 0)], &[pin(0, 0), pin(1, 1)]).unwrap();
+        let report = repair_wfc(&catalog(), request(), &[pin(5, 0)], &[pin(0, 0), pin(1, 1)])
+            .unwrap_or_else(|error| panic!("{error:?}"));
         assert!(!report.relaxed.is_empty());
         assert!(report.relaxed.iter().all(|p| p.coord.x < 3));
         assert_eq!(
@@ -125,7 +128,8 @@ mod tests {
         );
         assert_eq!(
             report,
-            repair_wfc(&catalog(), request(), &[pin(5, 0)], &[pin(0, 0), pin(1, 1)]).unwrap()
+            repair_wfc(&catalog(), request(), &[pin(5, 0)], &[pin(0, 0), pin(1, 1)])
+                .unwrap_or_else(|error| panic!("{error:?}"))
         );
     }
     #[test]
@@ -136,8 +140,8 @@ mod tests {
             ..request()
         };
         let mask = [true, false, true];
-        let result =
-            repair_wfc_masked(&catalog(), request, &[pin(0, 0), pin(2, 1)], &[], &mask).unwrap();
+        let result = repair_wfc_masked(&catalog(), request, &[pin(0, 0), pin(2, 1)], &[], &mask)
+            .unwrap_or_else(|error| panic!("{error:?}"));
         assert_eq!(
             result.solution.at(WfcCoord::new(0, 0)),
             WfcPatternId::new(0)

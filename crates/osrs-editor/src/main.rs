@@ -79,6 +79,17 @@ fn window_size() -> [f32; 2] {
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result<()> {
     let args: Vec<String> = std::env::args().collect();
+    if args
+        .get(1)
+        .is_some_and(|arg| arg == "--verify-authored-snapshot")
+    {
+        return session::authored_snapshot::run_cli(&args[2..])
+            .map_err(|error| eframe::Error::AppCreation(error.into()));
+    }
+    if args.get(1).is_some_and(|arg| arg == "--reproduce-building") {
+        return app::reproduce_cli(&args[2..])
+            .map_err(|error| eframe::Error::AppCreation(error.into()));
+    }
     // The command line, then RUSTOSRS_TARGET_CACHE_DIR, then the cache used last time.
     let cache_dir = app::EditorApp::initial_cache_dir(args.get(1).map(PathBuf::from));
     // Default window: the 3x3 regions around Lumbridge.

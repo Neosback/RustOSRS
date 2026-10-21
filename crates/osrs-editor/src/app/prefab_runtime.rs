@@ -5,6 +5,10 @@
 //! elsewhere and talk to this owner through narrow operations; nothing here touches the map.
 
 mod build;
+#[cfg(not(target_arch = "wasm32"))]
+pub(in crate::app) use build::reproduction::Source as ReproductionSource;
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) use build::reproduction::run_cli as reproduce_cli;
 mod store;
 mod trash;
 pub(in crate::app) use trash::TrashState;
@@ -147,6 +151,22 @@ impl PrefabRuntime {
 
     pub(in crate::app) fn entry(&self, file: &str) -> Option<&Entry> {
         self.entries.iter().find(|entry| entry.file == file)
+    }
+
+    /// Extract from the saved source asset, never an editor or GPU projection.
+    pub(in crate::app) fn extract_assembly(
+        &mut self,
+        file: &str,
+        member: usize,
+        name: &str,
+    ) -> Result<String, String> {
+        let prefab = self
+            .entry(file)
+            .ok_or("The source prefab no longer exists")?
+            .prefab
+            .extract_assembly(member, name)
+            .map_err(|e| e.to_string())?;
+        self.add(prefab)
     }
 
     pub(in crate::app) fn notice(&self) -> Option<&str> {

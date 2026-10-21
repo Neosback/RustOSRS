@@ -28,7 +28,7 @@ pub(super) struct SplineState {
     needs_overlay: bool,
     /// A plan for this key was cancelled by the user; it stays cancelled until an edit changes the key.
     cancelled_key: Option<u64>,
-    /// One background worker. Rapid changes are coalesced to the newest request.
+    /// One background worker retained between gestures, with one pending input/result slot.
     #[cfg(not(target_arch = "wasm32"))]
     worker: Option<PlanWorker>,
     ctx: Option<egui::Context>,
@@ -147,7 +147,9 @@ impl InteractionRuntime {
         self.spline.cancelled_key = None;
         #[cfg(not(target_arch = "wasm32"))]
         {
-            self.spline.worker = None;
+            if let Some(worker) = &mut self.spline.worker {
+                worker.cancel();
+            }
         }
     }
 
@@ -226,7 +228,9 @@ impl InteractionRuntime {
             self.spline.preview = None;
             #[cfg(not(target_arch = "wasm32"))]
             {
-                self.spline.worker = None;
+                if let Some(worker) = &mut self.spline.worker {
+                    worker.cancel();
+                }
             }
             return;
         };
@@ -242,27 +246,22 @@ impl InteractionRuntime {
 
         #[cfg(not(target_arch = "wasm32"))]
         {
-            let mut disconnected = false;
+            let mut stopped = false;
             if let Some(worker) = &mut self.spline.worker {
-                loop {
-                    match worker.result.try_recv() {
-                        Ok(preview) => {
-                            // Results for superseded states are harmless. Keep the previous
-                            // preview until the worker catches up, but never promote a stale one.
-                            if preview.key == desired_key {
-                                self.spline.preview = Some(preview);
-                                self.spline.error = None;
-                            }
-                        }
-                        Err(std::sync::mpsc::TryRecvError::Empty) => break,
-                        Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                            disconnected = true;
-                            break;
+                match worker.poll() {
+                    Ok(Some(preview)) => {
+                        // An old spatial preview may remain faded, but only the desired key
+                        // can be admitted as current, including edits later in this frame.
+                        if preview.key == desired_key {
+                            self.spline.preview = Some(preview);
+                            self.spline.error = None;
                         }
                     }
+                    Ok(None) => {}
+                    Err(()) => stopped = true,
                 }
             }
-            if disconnected {
+            if stopped {
                 self.spline.error = Some("Preview worker stopped; retrying");
                 self.spline.worker = None;
             }
@@ -304,7 +303,9 @@ impl InteractionRuntime {
     ) {
         #[cfg(not(target_arch = "wasm32"))]
         {
-            self.spline.worker = None;
+            if let Some(worker) = &mut self.spline.worker {
+                worker.cancel();
+            }
         }
         self.spline.needs_overlay = overlay_id.is_none();
         match self.plan_input(overlay_id, pending, options) {

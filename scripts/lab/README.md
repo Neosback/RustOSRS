@@ -31,7 +31,7 @@ Actions are `paint_rect`, `height_stroke`, `place`, `remove`, `move`, `turn`, `w
 `room_rect`, `undo`, `redo`. Coordinates are task-local; bounds, palette, scene slots and remaining
 budget constrain each action. There is no raw patch, prefab paste or target-building action.
 
-Export source examples with the `osrs-world` `building_dataset` example, then review memberships
+Export source examples with the `osrs-editor` `building_dataset` example, then review memberships
 and object roles in the capture UI. Train an integer-weight role classifier from confirmed labels:
 
 ```sh

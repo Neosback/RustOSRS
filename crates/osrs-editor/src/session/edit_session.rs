@@ -78,17 +78,41 @@ pub struct EditorSession {
 impl EditorSession {
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn new(document: MapDocument) -> Self {
+        Self::from_authored_document(EditorDocument {
+            workspace: WorkspaceDocument::new(document),
+            appearance: ThemePack::default(),
+        })
+    }
+
+    fn from_authored_document(document: EditorDocument) -> Self {
         Self {
-            document: EditorDocument {
-                workspace: WorkspaceDocument::new(document),
-                appearance: ThemePack::default(),
-            },
+            document,
             history: PatchHistory::new(),
             revision: 0,
             edit_revision: 0,
             loaded_regions: BTreeSet::new(),
             dirty_regions: BTreeSet::new(),
         }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn freeze_authored_snapshot(&self) -> super::authored_snapshot::Frozen {
+        super::authored_snapshot::Frozen::new(self.document.clone())
+    }
+
+    /// Decode new isolated authored state only. This never installs into a live session/history.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn from_authored_snapshot_json_v1(
+        text: &str,
+    ) -> Result<Self, super::authored_snapshot::Error> {
+        super::authored_snapshot::decode(text).map(Self::from_authored_document)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn authored_identity_v1(
+        &self,
+    ) -> Result<super::authored_snapshot::Identity, super::authored_snapshot::Error> {
+        super::authored_snapshot::identity(&self.document)
     }
 
     /// Semantic regions currently available, including authored regions preserved after eviction.

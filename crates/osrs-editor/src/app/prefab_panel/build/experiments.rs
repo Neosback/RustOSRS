@@ -40,16 +40,29 @@ pub(super) fn controls(app: &mut EditorApp, ui: &mut egui::Ui) {
             });
     });
     let mut chosen = None;
-    ui.collapsing("Candidates · 8 seeds, validated before acceptance", |ui| {
-        for (i, p) in app.prefabs.build.candidates.iter().enumerate() {
+    ui.collapsing("Candidates · validated before acceptance", |ui| {
+        for (i, p) in app
+            .prefabs
+            .build
+            .candidates(
+                app.project.generation(),
+                app.session.revision(),
+                &|id, _| app.placer.known_object_size(id.get()),
+            )
+            .iter()
+            .enumerate()
+        {
             ui.horizontal(|ui| {
                 crate::app::prefab_panel::preview::show(ui, &p.thumbnail, 52.0);
                 if ui
                     .selectable_label(
                         app.prefabs
                             .build
-                            .preview
-                            .as_ref()
+                            .current_preview(
+                                app.project.generation(),
+                                app.session.revision(),
+                                &|id, _| app.placer.known_object_size(id.get()),
+                            )
                             .is_some_and(|s| s.form.seed == p.form.seed),
                         format!(
                             "Seed {} · {} rooms · {} pieces",
@@ -62,11 +75,42 @@ pub(super) fn controls(app: &mut EditorApp, ui: &mut egui::Ui) {
                 }
             });
         }
-        for failure in &app.prefabs.build.failures {
-            ui.label(format!("Rejected: {failure}"));
+        for (seed, failure) in app.prefabs.build.failure_messages(
+            app.project.generation(),
+            app.session.revision(),
+            &|id, _| app.placer.known_object_size(id.get()),
+        ) {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(format!("Rejected: {failure}"));
+                #[cfg(not(target_arch = "wasm32"))]
+                if ui
+                    .add_enabled(
+                        !app.prefabs.build.reproduction_running()
+                            && app.prefabs.build.site_rect().is_some_and(|(origin, _, _)| {
+                                app.world.source_target(origin).is_some()
+                            }),
+                        egui::Button::new("Save report…").small(),
+                    )
+                    .on_hover_text(format!("Save a reproduction of rejected seed {seed}"))
+                    .clicked()
+                    && let Some(path) = rfd::FileDialog::new()
+                        .set_file_name(format!("building-failure-{seed}.json"))
+                        .save_file()
+                    && let Err(error) = super::export_rejected_reproduction(app, path, seed)
+                {
+                    app.ui.notify(error);
+                }
+                #[cfg(target_arch = "wasm32")]
+                let _ = seed;
+            });
         }
     });
     if let Some(index) = chosen {
-        app.prefabs.build.preview = app.prefabs.build.candidates.get(index).cloned();
+        app.prefabs.build.select_candidate(
+            index,
+            app.project.generation(),
+            app.session.revision(),
+            &|id, _| app.placer.known_object_size(id.get()),
+        );
     }
 }

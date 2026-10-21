@@ -1,5 +1,9 @@
 //! Region streaming and animation upkeep: what loads, what rebuilds, what animates.
 
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod animation_tests;
+mod region_install;
+
 use super::*;
 use osrs_world::StreamEvent;
 
@@ -14,6 +18,8 @@ impl EditorApp {
             self.renderer.remove_region(key);
             self.world.remove_info(key);
         }
+        self.renderer
+            .upload_transient(ANIMATED_KEY, &osrs_render::SceneGeometry::default());
         self.world.clear_outlines();
         self.clear_selection();
     }
@@ -48,11 +54,11 @@ impl EditorApp {
                 }
                 StreamEvent::NpcAssets(update) => self.npcs.assets_arrived(update),
                 StreamEvent::PlayerGeometry(update) => {
-                    self.player_model.arrived(update, &mut self.renderer);
+                    self.player_model.arrived(update);
                 }
                 StreamEvent::Sound { id, result } => self.audio.arrived(id, result),
                 StreamEvent::NpcGeometry(update) => {
-                    self.npcs.geometry_arrived(update, &mut self.renderer);
+                    self.npcs.geometry_arrived(update);
                 }
                 StreamEvent::HdFailed(error) => {
                     self.ui
@@ -96,62 +102,7 @@ impl EditorApp {
                     self.world.mark_ready();
                 }
                 StreamEvent::Region(region) => {
-                    let install_started = Instant::now();
-                    self.diagnostics
-                        .record_build(&region.timings, region.build_ms);
-                    let key = (region.region.x, region.region.y);
-                    // Retire the FIFO build ticket before checking worker presentation generation.
-                    // Old results must consume their own ticket so a later request for the same
-                    // region cannot be mistaken for this completion.
-                    let scope = self.world.build_finished(key);
-                    if !self.world.is_current_generation(region.generation) {
-                        continue;
-                    }
-                    let Some(scope) = scope else {
-                        continue;
-                    };
-                    // Accepted Object proof builds are full contextual/static worker results. Only
-                    // after the existing request/generation gates pass do we compare them with the
-                    // retained pre-edit producer output and possibly narrow the static install.
-                    let scope = self
-                        .world
-                        .resolve_install_scope(key, scope, &region.geometry);
-                    match crate::session::adapt_region_map(&region.source) {
-                        Ok(snapshot) => {
-                            let _ = self.session.ingest_region(&snapshot);
-                        }
-                        Err(error) => {
-                            self.ui.set_status(format!(
-                                "semantic region {},{} failed: {error:?}",
-                                region.region.x, region.region.y
-                            ));
-                        }
-                    }
-                    match &scope {
-                        world_runtime::RegionBuildScope::Full => {
-                            self.renderer.upload_region(key, &region.geometry);
-                        }
-                        world_runtime::RegionBuildScope::Zones(zones) => {
-                            self.renderer
-                                .upload_region_zones(key, &region.geometry, zones);
-                        }
-                    }
-                    // Installing new picker data also invalidates outline indices from the old build.
-                    self.world.install_info(key, region.info);
-                    self.world.region_installed(
-                        key,
-                        &scope,
-                        &region.geometry,
-                        &region.height_dependencies,
-                        region.animations,
-                    );
-                    if matches!(scope, world_runtime::RegionBuildScope::Full) {
-                        self.apply_project_region(RegionCoord::new(key.0, key.1));
-                    }
-                    self.diagnostics.event(
-                        "build.install",
-                        install_started.elapsed().as_secs_f32() * 1000.0,
-                    );
+                    region_install::install_region(self, *region);
                 }
                 StreamEvent::Outline {
                     identity,
@@ -167,23 +118,10 @@ impl EditorApp {
                     }
                 }
                 StreamEvent::Empty(region) => {
-                    let key = (region.x, region.y);
-                    let Some(scope) = self.world.build_finished(key) else {
-                        continue;
-                    };
-                    self.world.region_absent(key, &scope);
-                    if matches!(scope, world_runtime::RegionBuildScope::Full) {
-                        let _ = self.session.unload_region(region);
-                    }
+                    region_install::finish_unavailable_region(self, region, None);
                 }
                 StreamEvent::Failed(region, error) => {
-                    let key = (region.x, region.y);
-                    let Some(scope) = self.world.build_finished(key) else {
-                        continue;
-                    };
-                    self.world.region_absent(key, &scope);
-                    self.ui
-                        .set_status(format!("region {},{} failed: {error}", region.x, region.y));
+                    region_install::finish_unavailable_region(self, region, Some(&error));
                 }
                 StreamEvent::InitFailed(_) if self.project.cache_label().as_os_str().is_empty() => {
                 }
@@ -224,10 +162,12 @@ impl EditorApp {
     /// Advance animated locs to the current game cycle on the animation worker and upload the
     /// geometry it finishes.
     pub(super) fn update_animations(&mut self) {
-        if let Some((geometry, rebuild_ms)) = self.world.poll_animation_geometry() {
-            self.diagnostics.event("anim.rebuild", rebuild_ms);
+        self.world
+            .set_animation_playback(self.settings.prefs.animate_objects);
+        if let Some(artifact) = self.world.poll_animation_geometry() {
+            self.diagnostics.event("anim.rebuild", artifact.rebuild_ms);
             let phase = Instant::now();
-            self.renderer.upload_transient(ANIMATED_KEY, &geometry);
+            self.renderer.upload_animation(&artifact);
             self.diagnostics.phase("anim-upload", phase);
         }
         let (world_x, world_z) = self.world_position();

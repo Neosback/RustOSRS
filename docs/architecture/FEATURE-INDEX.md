@@ -11,6 +11,7 @@ gateway, or history path.
 | ID | Feature | Status | Owner | Kind | Mutation |
 |---|---|---|---|---|---|
 | `appearance` | Appearance | implemented | `osrs-hd::theme` | workspace | mutating |
+| `authored-snapshots` | Authored snapshots | implemented | `osrs-editor::session/authored_snapshot` | workspace | read-only |
 | `building-copy-demonstration` | Building copy demonstration | implemented | `osrs-lab::reconstruction` | workspace | mutating |
 | `buildings` | Buildings | implemented | `osrs-edit::building_kit` | workspace | mutating |
 | `height` | Height | implemented | `osrs-edit::height` | tool | mutating |
@@ -36,6 +37,16 @@ gateway, or history path.
 - **Gateway:** `crates/osrs-editor/src/app/edit_runtime.rs::execute_appearance`
 - **Behavior tests:** `crates/osrs-hd/tests/themes.rs::ordered_rules_override_only_authored_properties_and_explain_winners`, `crates/osrs-editor/src/app/theme_studio/mod.rs::cancelling_preview_keeps_authority_and_restores_the_visible_base`, `crates/osrs-editor/src/session/appearance_tests.rs::failed_projection_and_empty_theme_gesture_preserve_redo_and_dirty_regions`, `crates/osrs-editor/src/session/appearance_tests.rs::mixed_history_preserves_map_revision_and_restores_appearance_exactly`
 
+### Authored snapshots
+
+- **ID:** `authored-snapshots`
+- **Aliases:** `authored snapshot`, `workspace snapshot`, `authored document identity`, `workspace content snapshot`
+- **Owner:** `osrs-editor::session/authored_snapshot`
+- **Status:** `implemented`
+- **Controller:** `crates/osrs-editor/src/app/project_runtime/native/snapshot.rs::start_authored_snapshot`
+- **Planner:** -
+- **Gateway:** -
+
 ### Building copy demonstration
 
 - **ID:** `building-copy-demonstration`
@@ -50,7 +61,7 @@ gateway, or history path.
 ### Buildings
 
 - **ID:** `buildings`
-- **Aliases:** `building generator`, `procedural building`, `procgen building`, `building kit`
+- **Aliases:** `building generator`, `procedural building`, `procgen building`, `building kit`, `building reproduction`, `reproduce building`, `building failure reproduction`, `rejected building`
 - **Owner:** `osrs-edit::building_kit`
 - **Status:** `implemented`
 - **Controller:** `crates/osrs-editor/src/app/prefab_panel/build.rs::show`
@@ -109,7 +120,7 @@ gateway, or history path.
 - **Owner:** `osrs-edit::prefab`
 - **Status:** `implemented`
 - **Controller:** `crates/osrs-editor/src/app/prefab_panel/viewport.rs::armed_input`
-- **Planner:** `crates/osrs-edit/src/prefab/place.rs::plan_place_prefab`
+- **Planner:** `crates/osrs-edit/src/prefab/place.rs::try_plan_place_prefab`
 - **Gateway:** `crates/osrs-editor/src/app/editing/prefab_commit.rs::commit_map_patch`
 - **Behavior tests:** `crates/osrs-edit/src/prefab/tests.rs::one_turn_moves_things_where_a_clockwise_quarter_turn_puts_them`, `crates/osrs-editor/src/app/prefab_runtime/tests.rs::removing_the_armed_prefab_disarms_it`, `crates/osrs-editor/src/app/editing/history/routing/tests.rs::a_missing_tile_fails_the_composite_projection_and_restores_the_session`, `crates/osrs-editor/src/app/editing/history/routing/tests.rs::composite_undo_and_redo_replay_terrain_height_and_object_together`
 

@@ -9,7 +9,7 @@ use osrs_scene::{
 fn p(n: u8) -> SourcePlane {
     SourcePlane::new(n).unwrap_or_else(|| unreachable!())
 }
-fn fixture() -> (MapDocument, Review) {
+pub(super) fn fixture() -> (MapDocument, Review) {
     let floors: Vec<_> = (1..=3)
         .flat_map(|x| (1..=3).filter_map(move |y| (x != 2 || y != 2).then_some(MapTile::new(x, y))))
         .collect();
@@ -171,5 +171,81 @@ fn manual_floor_and_missed_piece_corrections_survive_capture_without_map_edits()
             .unwrap_or_else(|e| panic!("{e}"))
             .objects
             .contains(&piece)
+    );
+}
+
+#[test]
+fn hydration_eviction_and_source_change_reject_capture_without_touching_history() {
+    use crate::app::edit_runtime::EditRuntime;
+    use osrs_core::coords::RegionCoord;
+    use osrs_edit::{MapOp, MapPatch, MapRegionSnapshot};
+    for evict in [false, true] {
+        let (document, mut review) = fixture();
+        let mut session = EditRuntime::default();
+        let region = RegionCoord::new(0, 0);
+        session.ingest_region(
+            &MapRegionSnapshot::from_parts(
+                region,
+                document.terrain_entries(),
+                document.height_entries(),
+                document.object_entries(),
+            )
+            .unwrap_or_else(|e| panic!("{e:?}")),
+        );
+        let other = HeightVertexCoord::new(MapTile::new(128, 0), p(0));
+        session.ingest_region(
+            &MapRegionSnapshot::from_parts(RegionCoord::new(2, 0), [], [(other, 8)], [])
+                .unwrap_or_else(|e| panic!("{e:?}")),
+        );
+        session
+            .commit(MapPatch::new(vec![MapOp::SetHeight {
+                coord: other,
+                before: 8,
+                after: 16,
+            }]))
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        session.undo().unwrap_or_else(|e| panic!("{e:?}"));
+        assert!(session.can_redo());
+        review.source = 7;
+        review.revision = session.revision();
+        assert!(
+            review
+                .capture_spec(session.document(), session.revision(), 7)
+                .is_ok()
+        );
+        let authored = session.map_revision();
+        if evict {
+            session.unload_region(region);
+        } else {
+            session.ingest_region(
+                &MapRegionSnapshot::from_parts(
+                    region,
+                    document.terrain_entries(),
+                    document
+                        .height_entries()
+                        .map(|(coord, height)| (coord, height - 8)),
+                    document.object_entries(),
+                )
+                .unwrap_or_else(|e| panic!("{e:?}")),
+            );
+        }
+        assert_eq!(session.map_revision(), authored);
+        assert!(!review.is_current(session.revision(), 7));
+        let before = session.document().clone();
+        assert!(
+            review
+                .capture_spec(session.document(), session.revision(), 7)
+                .is_err()
+        );
+        #[cfg(not(target_arch = "wasm32"))]
+        assert!(review.clone().admit(session.revision(), 7).is_err());
+        assert_eq!(session.document(), &before);
+        assert!(session.can_redo(), "review rejection must preserve redo");
+    }
+    let (document, review) = fixture();
+    assert!(
+        review
+            .capture_spec(&document, review.revision, review.source + 1)
+            .is_err()
     );
 }

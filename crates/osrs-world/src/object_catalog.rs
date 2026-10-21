@@ -9,6 +9,7 @@ use osrs_cache::{
     decode::DecoderContext, decode::decode_object_definition, transport::CacheRepository,
 };
 use osrs_core::{definitions::ObjectModels, ids::ObjectId};
+use std::collections::BTreeMap;
 
 const CONFIG_INDEX: u8 = 2;
 const OBJECT_GROUP: u32 = 6;
@@ -87,12 +88,18 @@ impl ObjectEntry {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ObjectCatalog {
     entries: Vec<ObjectEntry>,
+    /// Decoded definitions without direct models (including morph-only definitions). These
+    /// remain absent from placement search, but their definition dimensions are still known.
+    unlisted_sizes: BTreeMap<u32, (u16, u16)>,
 }
 
 impl ObjectCatalog {
     pub fn from_entries(mut entries: Vec<ObjectEntry>) -> Self {
         entries.sort_by_key(|entry| entry.id);
-        Self { entries }
+        Self {
+            entries,
+            unlisted_sizes: BTreeMap::new(),
+        }
     }
 
     pub fn len(&self) -> usize {
@@ -112,6 +119,16 @@ impl ObjectCatalog {
             .binary_search_by_key(&id, |entry| entry.id)
             .ok()
             .map(|index| &self.entries[index])
+    }
+
+    /// Base definition dimensions, including definitions without a searchable model. Missing or
+    /// undecodable definitions stay unknown; callers must decide how to handle that absence.
+    pub fn definition_size(&self, id: u32) -> Option<(u8, u8)> {
+        let (x, y) = self
+            .get(id)
+            .map(|entry| (entry.size_x, entry.size_y))
+            .or_else(|| self.unlisted_sizes.get(&id).copied())?;
+        Some((u8::try_from(x).ok()?, u8::try_from(y).ok()?))
     }
 
     /// Attach readable gameval symbols (`loc.*`) to matching entries in place.
@@ -266,6 +283,7 @@ pub fn load_object_catalog(
     let (cache, profile) = CacheRepository::open_matching(cache, &profiles)?;
     let context = DecoderContext::from_profile(&profile)?;
     let mut entries = Vec::new();
+    let mut unlisted_sizes = BTreeMap::new();
     for (id, file) in cache.read_group_files(CONFIG_INDEX, OBJECT_GROUP)? {
         let Ok(definition) =
             decode_object_definition(ObjectId::new(id), &file.bytes, &context, &file.provenance)
@@ -281,7 +299,10 @@ pub fn load_object_catalog(
                 models.iter().map(|model| model.loc_type.get()).collect()
             }
             Some(ObjectModels::Untyped(models)) if !models.is_empty() => vec![SCENERY_LOC_TYPE],
-            _ => continue,
+            _ => {
+                unlisted_sizes.insert(id, (definition.size_x.max(1), definition.size_y.max(1)));
+                continue;
+            }
         };
         loc_types.sort_unstable();
         loc_types.dedup();
@@ -301,149 +322,10 @@ pub fn load_object_catalog(
             blocking_mask: definition.blocking_mask,
         });
     }
-    Ok(ObjectCatalog::from_entries(entries))
+    let mut catalog = ObjectCatalog::from_entries(entries);
+    catalog.unlisted_sizes = unlisted_sizes;
+    Ok(catalog)
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn entry(id: u32, name: &str, loc_types: &[u8]) -> ObjectEntry {
-        ObjectEntry {
-            id,
-            name: name.to_owned(),
-            symbol: None,
-            custom_name: None,
-            custom_role: None,
-            size_x: 2,
-            size_y: 1,
-            loc_types: loc_types.to_vec(),
-            category: None,
-            map_scene: None,
-            map_icon: None,
-            support_items: None,
-            blocking_mask: 0,
-        }
-    }
-
-    fn catalog() -> ObjectCatalog {
-        let mut unnamed_wall = entry(99, "", &[0]);
-        unnamed_wall.map_scene = Some(12);
-        unnamed_wall.category = Some(207);
-        ObjectCatalog::from_entries(vec![
-            entry(30, "Oak tree", &[10]),
-            entry(10, "Tree", &[10]),
-            entry(20, "Dead tree", &[10]),
-            entry(5, "Wooden door", &[0, 9]),
-            entry(7, "Bank booth", &[10]),
-            unnamed_wall,
-        ])
-    }
-
-    #[test]
-    fn names_people_gave_win_in_lists_and_searches_and_can_be_filtered_by_role() {
-        let mut catalog = catalog();
-        catalog.apply_custom(|id| {
-            if id == 99 {
-                (Some("Brick wall".to_owned()), Some("wall".to_owned()))
-            } else {
-                (None, None)
-            }
-        });
-        let found = catalog.search("brick", 10);
-        assert_eq!(found.iter().map(|e| e.id).collect::<Vec<_>>(), vec![99]);
-        assert_eq!(found[0].display_name(), "Brick wall");
-        let by_role = catalog.search("role:wall", 10);
-        assert_eq!(by_role.iter().map(|e| e.id).collect::<Vec<_>>(), vec![99]);
-        // Once it is named it is no longer in the unnamed list; forgetting brings it back.
-        assert!(catalog.search("unnamed", 10).iter().all(|e| e.id != 99));
-        catalog.apply_custom(|_| (None, None));
-        assert!(catalog.search("unnamed", 10).iter().any(|e| e.id == 99));
-        assert!(catalog.search("brick", 10).is_empty());
-    }
-
-    #[test]
-    fn search_ranks_exact_id_then_prefix_then_contains() {
-        let catalog = catalog();
-        let names = |query: &str| -> Vec<String> {
-            catalog
-                .search(query, 10)
-                .into_iter()
-                .map(|e| e.name.clone())
-                .collect()
-        };
-        assert_eq!(names("tree"), vec!["Tree", "Dead tree", "Oak tree"]);
-        assert_eq!(names("10"), vec!["Tree"]);
-        assert_eq!(names("wooden door"), vec!["Wooden door"]);
-        assert_eq!(names("DOOR"), vec!["Wooden door"]);
-        assert!(names("   ").is_empty());
-        assert!(names("zzz").is_empty());
-    }
-
-    #[test]
-    fn search_respects_the_limit_and_id_lookup_does_not_duplicate() {
-        let catalog = catalog();
-        assert_eq!(catalog.search("tree", 2).len(), 2);
-        assert_eq!(catalog.get(7).map(|e| e.name.as_str()), Some("Bank booth"));
-        assert_eq!(catalog.get(8), None);
-        // "5" matches id 5 by id; it must not also appear as a name hit.
-        let hits = catalog.search("5", 10);
-        assert_eq!(hits.iter().filter(|e| e.id == 5).count(), 1);
-    }
-
-    #[test]
-    fn default_loc_type_prefers_scenery_and_footprint_turns_with_orientation() {
-        assert_eq!(entry(1, "A", &[0, 9, 10]).default_loc_type(), 10);
-        assert_eq!(entry(1, "A", &[2, 9]).default_loc_type(), 2);
-        let e = entry(1, "A", &[10]);
-        assert_eq!(e.footprint(0), (2, 1));
-        assert_eq!(e.footprint(1), (1, 2));
-        assert_eq!(e.footprint(2), (2, 1));
-    }
-
-    #[test]
-    fn unnamed_architectural_entries_match_by_id_symbol_slot_and_metadata() {
-        let mut catalog = catalog();
-        assert_eq!(
-            catalog.get(99).map(ObjectEntry::display_name),
-            Some("Object 99".to_owned())
-        );
-        assert_eq!(
-            catalog
-                .search("99", 5)
-                .into_iter()
-                .map(|e| e.id)
-                .collect::<Vec<_>>(),
-            vec![99]
-        );
-        assert_eq!(
-            catalog
-                .search("slot:wall", 5)
-                .into_iter()
-                .map(|e| e.id)
-                .collect::<Vec<_>>(),
-            vec![5, 99]
-        );
-        assert_eq!(
-            catalog
-                .search("scene:12 category:207", 5)
-                .into_iter()
-                .map(|e| e.id)
-                .collect::<Vec<_>>(),
-            vec![99]
-        );
-        catalog.apply_symbols(|id| (id == 99).then(|| "stone wall straight".to_owned()));
-        assert_eq!(
-            catalog.get(99).map(ObjectEntry::display_name),
-            Some("[stone wall straight]".to_owned())
-        );
-        assert_eq!(
-            catalog
-                .search("stone wall", 5)
-                .into_iter()
-                .map(|e| e.id)
-                .collect::<Vec<_>>(),
-            vec![99]
-        );
-    }
-}
+mod tests;

@@ -120,3 +120,34 @@ fn resolution_is_deterministic_and_leaves_other_objects_alone() {
         |op| matches!(op, MapOp::AddObject { placement } if placement.object_id.get() == 604)
     ));
 }
+
+#[test]
+fn identical_wall_tiles_on_different_planes_do_not_displace_each_other() {
+    let lower = wall(10, 10, 0);
+    let MapOp::AddObject { mut placement } = lower else {
+        panic!("wall")
+    };
+    placement.position.plane = SourcePlane::new(1).unwrap_or_else(|| panic!("plane"));
+    let upper = MapOp::AddObject { placement };
+    let patch = MapPatch::new([lower, upper]);
+    assert_eq!(resolve_wall_slots(&patch), (patch, 0));
+}
+
+#[test]
+fn straight_walls_respect_fixed_corner_slots_and_unresolved_conflicts_are_reported() {
+    let MapOp::AddObject { mut placement } = wall(10, 10, 0) else {
+        panic!("wall")
+    };
+    placement.kind = LocKind::new(2).unwrap_or_else(|| panic!("corner"));
+    let corner = MapOp::AddObject { placement };
+    let patch = MapPatch::new([corner, wall(10, 10, 0)]);
+    let (resolved, count) = resolve_wall_slots(&patch);
+    assert_eq!(count, 0);
+    assert!(per_tile(&resolved).values().all(|n| *n == 1));
+    assert!(resolved.ops().contains(&corner));
+    // A fixed corner cannot move out of another fixed boundary slot.
+    placement.object_id = ObjectId::new(200);
+    let duplicate = MapOp::AddObject { placement };
+    let patch = MapPatch::new([corner, duplicate]);
+    assert_eq!(resolve_wall_slots(&patch), (patch, 1));
+}

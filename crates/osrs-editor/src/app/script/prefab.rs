@@ -12,6 +12,23 @@ fn spoken(name: &str) -> String {
 
 pub(super) fn run(app: &mut EditorApp, words: &mut SplitWhitespace<'_>) -> Result<(), String> {
     match words.next().unwrap_or_default() {
+        "assembly" => {
+            let source = spoken(words.next().ok_or("A source prefab name is missing")?);
+            let member = super::number::<usize>(words.next(), "zero-based member index")?;
+            let name = spoken(words.next().ok_or("An assembly name is missing")?);
+            if words.next().is_some() {
+                return Err("Use prefab assembly SOURCE MEMBER NAME".into());
+            }
+            let file = app
+                .prefabs
+                .entries()
+                .iter()
+                .find(|e| e.prefab.name == source)
+                .map(|e| e.file.clone())
+                .ok_or("No saved prefab with that name")?;
+            let saved = app.prefabs.extract_assembly(&file, member, &name)?;
+            app.prefabs.say(format!("Saved assembly {saved}"));
+        }
         "studio" => {
             use crate::app::prefab_studio::SceneCommand;
             let Some(name) = words.next() else {
@@ -93,6 +110,40 @@ pub(super) fn run(app: &mut EditorApp, words: &mut SplitWhitespace<'_>) -> Resul
             let committed = crate::app::prefab_panel::place(app, &armed, (x, y));
             eprintln!("smoke: place {name:?} at ({x},{y}) turns {turns}: committed {committed}");
         }
+        "reproduce" => {
+            let path = words
+                .next()
+                .ok_or("A reproduction destination is missing")?;
+            let rejected_seed = words
+                .next()
+                .map(|word| {
+                    word.strip_prefix("failure=")
+                        .ok_or("Expected failure=SEED")?
+                        .parse::<u64>()
+                        .map_err(|_| "Invalid rejected seed")
+                })
+                .transpose()?;
+            if words.next().is_some() {
+                return Err("Use prefab reproduce PATH [failure=SEED] (paths with spaces require the product dialog)".into());
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            match rejected_seed {
+                Some(seed) => crate::app::prefab_panel::export_rejected_reproduction(
+                    app,
+                    std::path::PathBuf::from(path),
+                    seed,
+                )?,
+                None => crate::app::prefab_panel::export_reproduction(
+                    app,
+                    std::path::PathBuf::from(path),
+                )?,
+            }
+            #[cfg(target_arch = "wasm32")]
+            {
+                let _ = (path, rejected_seed);
+                return Err("Building reproduction export requires the native editor".into());
+            }
+        }
         "build" => {
             let x = super::number::<i32>(words.next(), "x")?;
             let y = super::number::<i32>(words.next(), "y")?;
@@ -120,9 +171,9 @@ pub(super) fn run(app: &mut EditorApp, words: &mut SplitWhitespace<'_>) -> Resul
             build.form.height = height;
             build.form.seed = seed;
             build.centre_site_on((x, y), app.interaction.view_plane());
-            let revision = app.session.map_revision();
+            let revision = app.session.revision();
             let size_of = |id: osrs_core::ids::ObjectId, _: osrs_edit::LocKind| {
-                app.placer.object_size(id.get())
+                app.placer.known_object_size(id.get())
             };
             app.prefabs.build.refresh_for_script(
                 app.session.document(),
@@ -130,7 +181,14 @@ pub(super) fn run(app: &mut EditorApp, words: &mut SplitWhitespace<'_>) -> Resul
                 revision,
                 &size_of,
             );
-            match (&app.prefabs.build.preview, &app.prefabs.build.error) {
+            match (
+                app.prefabs.build.current_preview(
+                    app.project.generation(),
+                    app.session.revision(),
+                    &|id, _| app.placer.known_object_size(id.get()),
+                ),
+                &app.prefabs.build.error,
+            ) {
                 (Some(preview), _) => {
                     eprintln!(
                         "smoke: building: {} objects, {} removed",
@@ -163,7 +221,7 @@ pub(super) fn run(app: &mut EditorApp, words: &mut SplitWhitespace<'_>) -> Resul
         }
         "check" => {
             // Every object of the current building plan must be in the rendered world.
-            let Some(preview) = app.prefabs.build.preview.clone() else {
+            let Some(preview) = app.prefabs.build.last_preview().cloned() else {
                 return Err("no building plan to check".into());
             };
             let (mut total, mut missing) = (0, Vec::new());

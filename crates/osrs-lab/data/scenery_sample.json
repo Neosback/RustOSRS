@@ -1,0 +1,287 @@
+[
+  {
+    "id": 1,
+    "name": "Crate",
+    "category": "Storage",
+    "options": [
+      "Search"
+    ],
+    "examine": "Big mysterious crate. You wonder what could be inside.",
+    "location": "Goblin Cave",
+    "wiki": "Crate_(Dwarf_Cannon)",
+    "worldX": 2571,
+    "worldY": 9850,
+    "plane": 0,
+    "interactable": true
+  },
+  {
+    "id": 2,
+    "name": "Cave Entrance",
+    "category": "Entrances",
+    "options": [
+      "Enter"
+    ],
+    "examine": "Looks and smells like a place where goblins live.",
+    "location": "North of East Ardougne",
+    "wiki": "Cave_Entrance_(Goblin_Cave)",
+    "worldX": 2622,
+    "worldY": 3392,
+    "plane": 0,
+    "interactable": true
+  },
+  {
+    "id": 3,
+    "name": "Door",
+    "category": "Entrances",
+    "options": [
+      "Open"
+    ],
+    "examine": "The door is closed.",
+    "location": "Entrance to the Dwarven Mine on Ice Mountain",
+    "wiki": "Door_(Nulodion)",
+    "worldX": 3015,
+    "worldY": 3453,
+    "plane": 0,
+    "interactable": true
+  },
+  {
+    "id": 4,
+    "name": "Door",
+    "category": "Entrances",
+    "options": [
+      "Open"
+    ],
+    "examine": "The door is closed.",
+    "interactable": true
+  },
+  {
+    "id": 5,
+    "name": "Broken multicannon",
+    "category": "Other",
+    "options": [
+      "Inspect"
+    ],
+    "examine": "A powerful ranging device, unfortunately not working.",
+    "location": "Coal Trucks",
+    "wiki": "Broken_multicannon",
+    "worldX": 2562,
+    "worldY": 3461,
+    "plane": 0,
+    "interactable": true
+  },
+  {
+    "id": 6,
+    "name": "Dwarf multicannon",
+    "category": "Other",
+    "options": [
+      "Fire",
+      "Pick-up",
+      "Empty",
+      "Load X"
+    ],
+    "examine": "A powerful ranging device that fires metal balls.",
+    "wiki": "Dwarf_multicannon#Normal",
+    "interactable": true
+  },
+  {
+    "id": 7,
+    "name": "Cannon base",
+    "category": "Other",
+    "options": [
+      "Pick-up"
+    ],
+    "examine": "The cannon is built on here.",
+    "wiki": "Dwarf_multicannon#Normal,_base",
+    "interactable": true
+  },
+  {
+    "id": 8,
+    "name": "Cannon stand",
+    "category": "Surfaces",
+    "options": [
+      "Pick-up"
+    ],
+    "examine": "The mounting for the multicannon.",
+    "wiki": "Dwarf_multicannon#Normal,_stand",
+    "interactable": true
+  },
+  {
+    "id": 9,
+    "name": "Cannon barrels",
+    "category": "Storage",
+    "options": [
+      "Pick-up"
+    ],
+    "examine": "The barrels of the multicannon.",
+    "wiki": "Dwarf_multicannon#Normal,_barrels",
+    "interactable": true
+  },
+  {
+    "id": 10,
+    "name": "Ladder",
+    "category": "Vertical",
+    "options": [
+      "Climb-down"
+    ],
+    "examine": "I can climb down this.",
+    "interactable": true
+  },
+  {
+    "id": 11,
+    "name": "Ladder",
+    "category": "Vertical",
+    "options": [
+      "Climb-up"
+    ],
+    "examine": "I can climb up this.",
+    "interactable": true
+  },
+  {
+    "id": 12,
+    "name": "Rock pile",
+    "category": "Vertical",
+    "options": [
+      "Climb-over"
+    ],
+    "examine": "A pile of rocks is blocking my path.",
+    "interactable": true
+  },
+  {
+    "id": 13,
+    "name": "Mud pile",
+    "category": "Vertical",
+    "options": [
+      "Climb-over"
+    ],
+    "examine": "Mud caved in from above.",
+    "location": "Goblin Cave",
+    "wiki": "Mud_pile",
+    "worldX": 2621,
+    "worldY": 9796,
+    "plane": 0,
+    "interactable": true
+  },
+  {
+    "id": 14,
+    "name": "Railing",
+    "category": "Other",
+    "options": [
+      "Inspect"
+    ],
+    "examine": "Intended to keep the goblins away from the mines.",
+    "interactable": true
+  },
+  {
+    "id": 15,
+    "name": "Railing",
+    "category": "Other",
+    "options": [
+      "Inspect"
+    ],
+    "examine": "A broken rail.",
+    "interactable": true
+  },
+  {
+    "id": 16,
+    "name": "Railing",
+    "category": "Other",
+    "options": [
+      "Inspect"
+    ],
+    "examine": "A broken rail.",
+    "interactable": true
+  },
+  {
+    "id": 17,
+    "name": "Railing",
+    "category": "Other",
+    "options": [
+      "Inspect"
+    ],
+    "examine": "A broken rail.",
+    "interactable": true
+  },
+  {
+    "id": 18,
+    "name": "Railing",
+    "category": "Other",
+    "options": [
+      "Inspect"
+    ],
+    "examine": "A broken rail.",
+    "interactable": true
+  },
+  {
+    "id": 19,
+    "name": "Railing",
+    "category": "Other",
+    "options": [
+      "Inspect"
+    ],
+    "examine": "A broken rail.",
+    "interactable": true
+  },
+  {
+    "id": 20,
+    "name": "Railing",
+    "category": "Other",
+    "options": [
+      "Inspect"
+    ],
+    "examine": "A broken rail.",
+    "interactable": true
+  },
+  {
+    "id": 21,
+    "name": "Mysterious statue",
+    "category": "Religious",
+    "examine": "Its eyes stare off into the distance...",
+    "wiki": "Mysterious_statue"
+  },
+  {
+    "id": 22,
+    "name": "Door",
+    "category": "Entrances",
+    "options": [
+      "Open"
+    ],
+    "examine": "The door is shut.",
+    "interactable": true
+  },
+  {
+    "id": 23,
+    "name": "Sacks",
+    "category": "Entrances",
+    "options": [
+      "Prod",
+      "Open"
+    ],
+    "examine": "Unusually lumpy looking.",
+    "location": "Goblin Village",
+    "wiki": "Sacks_(Holy_Grail)",
+    "worldX": 2962,
+    "worldY": 3506,
+    "plane": 0,
+    "interactable": true
+  },
+  {
+    "id": 24,
+    "name": "Door",
+    "category": "Entrances",
+    "options": [
+      "Open"
+    ],
+    "examine": "The door is shut.",
+    "interactable": true
+  },
+  {
+    "id": 33,
+    "name": "Lever",
+    "category": "Other",
+    "options": [
+      "Pull"
+    ],
+    "examine": "Yup, definitely a lever.",
+    "interactable": true
+  }
+]

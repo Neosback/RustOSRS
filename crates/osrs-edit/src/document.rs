@@ -198,14 +198,7 @@ impl MapDocument {
     /// Deterministically ordered exact placement occurrences.
     pub fn object_entries(&self) -> Vec<ObjectPlacement> {
         let mut objects: Vec<_> = self.objects.iter().copied().collect();
-        objects.sort_by_key(|p| {
-            (
-                p.position,
-                p.kind.get(),
-                p.object_id.get(),
-                p.orientation.get(),
-            )
-        });
+        objects.sort_by_key(ObjectPlacement::document_key);
         objects
     }
 

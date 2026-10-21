@@ -1,0 +1,30 @@
+fixture_id: normals.merge.flat_neighbor
+schema_version: 1
+owned_specs:
+  - NORMALS-002
+parity_level: P1
+execution: semantic
+oracle:
+  kind: melxin-deob-extracted-methods
+  repository: melxin/runelite
+  commit: 1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc
+  files:
+    - path: runescape-client/src/main/java/ModelData.java
+      blob: 2cc9406b2504fbd4fae0c0c952aa2d133809e928
+      symbol: method5262
+    - path: runescape-client/src/main/java/VertexNormal.java
+      blob: a65ca6a703da681a583093a7478b492dcdbfe693
+      symbol: VertexNormal
+    - path: runescape-client/src/main/java/FaceNormal.java
+      blob: 4d5441b33df33e0dc584ca8be6d209ad555edf95
+      symbol: FaceNormal
+harness:
+  path: scripts/normal_oracle/regenerate.py
+  revision: sha256:7fb949e6d8fac4101f64baf183e7140bf8a66578dd2e1b68a1a9f38c839721cd
+input: normals/merge_flat_neighbor.input.json
+expected: normals/merge_flat_neighbor.expected.json
+expected_sha256: 9ec0374e180b13c0d478aa90979a95c4b7cce099b2ba122f81f9b7559bc2bb0c
+normalization:
+  - preserve signed integer geometry, original vertex order and separate model identity
+  - preserve every nullable normal slot and absent versus allocated render type arrays
+notes: Coincident flat-only vertices are ineligible; preserve the existing right render type array.

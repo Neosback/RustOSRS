@@ -154,12 +154,22 @@ impl WorldRuntime {
     /// Queue one world 8x8 zone when its owning region is resident and no full rebuild supersedes it.
     fn mark_zone_dirty(&mut self, zone: ZoneKey) {
         let region = zone_region(zone);
+        // Rejected regions have no installed zones. A later edit must restore the complete region,
+        // rather than publish only a few zones and leave the rest hidden indefinitely.
+        if matches!(self.loaded.get(&region), Some(None)) {
+            self.mark_dirty(region);
+            return;
+        }
         // Any later semantic invalidation cancels an Object proof that was waiting on this producer.
         // The conservative/normal dirty state remains and will rebuild safely.
         self.object_outputs.cancel_pending(region);
-        if self.dirty_regions.contains(&region)
-            || !matches!(self.loaded.get(&region), Some(Some(_)))
-        {
+        if self.dirty_regions.contains(&region) {
+            // A full obligation also survives dispatch. New zone edits must still obsolete its
+            // in-flight snapshot even though they need not add a second, narrower work item.
+            self.builds.invalidate(region);
+            return;
+        }
+        if !matches!(self.loaded.get(&region), Some(Some(_))) {
             return;
         }
         self.builds.invalidate(region);

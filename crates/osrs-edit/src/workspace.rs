@@ -32,9 +32,13 @@ pub type WorkspaceHistory = PatchHistory<WorkspaceDocument>;
 
 impl WorkspaceDocument {
     pub fn new(map: MapDocument) -> Self {
+        Self::from_parts(map, ScenarioDocument::default())
+    }
+    /// Compose already validated authored domains as a fresh baseline, without a history edit.
+    pub fn from_parts(map: MapDocument, scenario: ScenarioDocument) -> Self {
         Self {
             map,
-            scenario: ScenarioDocument::default(),
+            scenario,
             map_revision: 0,
         }
     }

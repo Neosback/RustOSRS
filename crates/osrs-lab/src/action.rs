@@ -547,10 +547,7 @@ impl Action {
                     }
                     for placement in hip_roof_placements(
                         &footprint,
-                        HipRoofAssets {
-                            slope: ObjectId::new(*slope_id),
-                            edge: ObjectId::new(*edge),
-                        },
+                        HipRoofAssets::new(ObjectId::new(*slope_id), ObjectId::new(*edge)),
                         source_plane,
                     ) {
                         let p = PrefabObject {

@@ -7,7 +7,7 @@ use osrs_core::{
     ids::ObjectId,
 };
 use osrs_edit::{
-    LocKind, MapOp, PlaceSpec, PlacedPrefab, PrefabError, plan_place_prefab, turned_size,
+    LocKind, MapOp, PlaceSpec, PlacedPrefab, PrefabError, try_plan_place_prefab, turned_size,
 };
 
 /// Most object markers the ghost draws.
@@ -33,6 +33,15 @@ pub(super) fn plan(
     armed: &Armed,
     hover: (i32, i32),
 ) -> Result<(PlacedPrefab, MapTile), PrefabError> {
+    plan_recording(app, armed, hover, None)
+}
+
+fn plan_recording(
+    app: &EditorApp,
+    armed: &Armed,
+    hover: (i32, i32),
+    observed: Option<&std::cell::RefCell<super::placement_review::DefinitionInputs>>,
+) -> Result<(PlacedPrefab, MapTile), PrefabError> {
     let entry = app.prefabs.entry(&armed.file).ok_or(PrefabError::Nothing)?;
     let base_plane =
         SourcePlane::new(app.interaction.view_plane()).ok_or(PrefabError::BadSize {
@@ -55,18 +64,14 @@ pub(super) fn plan(
         objects: armed.objects,
         replace_objects: armed.replace_objects,
     };
-    let size_of = |id: ObjectId, _: LocKind| {
-        entry
-            .prefab
-            .building
-            .as_ref()
-            .and_then(|b| b.object_sizes.get(&id.get()))
-            .map_or_else(
-                || app.placer.object_size(id.get()),
-                |&(x, y)| (x as u8, y as u8),
-            )
+    let size_of = |id: ObjectId, kind: LocKind| {
+        let source = app.placer.known_object_size(id.get());
+        if let Some(observed) = observed {
+            observed.borrow_mut().insert((id, kind), source);
+        }
+        super::placement_review::resolve_size(&entry.prefab, id, kind, source)
     };
-    plan_place_prefab(app.session.document(), &entry.prefab, spec, &size_of)
+    try_plan_place_prefab(app.session.document(), &entry.prefab, spec, &size_of)
         .map(|placed| (placed, origin))
 }
 
@@ -125,8 +130,9 @@ pub(in crate::app) fn place(app: &mut EditorApp, armed: &Armed, hover: (i32, i32
         .prefabs
         .entry(&armed.file)
         .map_or_else(String::new, |entry| entry.prefab.name.clone());
-    match plan(app, armed, hover) {
-        Ok((placed, _)) => {
+    let definitions = std::cell::RefCell::new(Default::default());
+    match plan_recording(app, armed, hover, Some(&definitions)) {
+        Ok((placed, origin)) => {
             if app
                 .prefabs
                 .entry(&armed.file)
@@ -139,9 +145,22 @@ pub(in crate::app) fn place(app: &mut EditorApp, armed: &Armed, hover: (i32, i32
             {
                 app.prefabs.placement_review = Some(super::placement_review::PlacementReview::new(
                     placed.patch,
-                    app.session.map_revision(),
+                    app.session.revision(),
                     app.project.generation(),
                     name,
+                    super::placement_review::PlacementInput {
+                        armed: armed.clone(),
+                        gesture: app.prefabs.armed.clone(),
+                        prefab: app
+                            .prefabs
+                            .entry(&armed.file)
+                            .unwrap_or_else(|| unreachable!("planned entry"))
+                            .prefab
+                            .clone(),
+                        plane: app.interaction.view_plane(),
+                        origin,
+                        definitions: definitions.into_inner(),
+                    },
                 ));
                 return false;
             }
@@ -343,7 +362,11 @@ pub(in crate::app) fn draw_world(
         if let Some((origin, w, h)) = build.site_rect() {
             ghost.outline(origin, w, h, Color32::from_rgb(110, 190, 255));
         }
-        if let Some(preview) = &build.preview {
+        if let Some(preview) = build.current_preview(
+            app.project.generation(),
+            app.session.revision(),
+            &|id, _| app.placer.known_object_size(id.get()),
+        ) {
             ghost.markers(&preview.apply);
         }
     }

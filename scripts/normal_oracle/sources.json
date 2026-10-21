@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "source_commit": "1ad572d7dcdbc0fb67a4a00f0c2f959d5ab25abc",
+  "declared_game_revision": 235,
+  "scope": "Exact isolated base normals, bounds and cross-model merge methods; no scene traversal or visual parity claim.",
+  "sources": [
+    {
+      "path": "runescape-client/src/main/java/ModelData.java",
+      "sha256": "109cf564713fecfe15f91c62e5f8bf69f9707d9df0acd25c2af08b60fb4ca94a"
+    },
+    {
+      "path": "runescape-client/src/main/java/VertexNormal.java",
+      "sha256": "11f3fac8bc1d3406cd19bd16587b5946e5aee7d62270b5afc241121a0bdf13f5"
+    },
+    {
+      "path": "runescape-client/src/main/java/FaceNormal.java",
+      "sha256": "27b65db5ab3df41e1e46ba43086ec90764b20a670fad3a863a107f8d39fdd5ea"
+    }
+  ]
+}

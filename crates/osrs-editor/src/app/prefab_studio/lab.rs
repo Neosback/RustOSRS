@@ -63,6 +63,7 @@ impl LabPanel {
         self.demonstration = Some(runner::Job::start(task, self.seed)?);
         Ok(())
     }
+    #[cfg(not(target_arch = "wasm32"))]
     pub(super) fn load_policy(
         &mut self,
         viewer: &mut EditorApp,

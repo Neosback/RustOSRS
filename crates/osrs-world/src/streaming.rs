@@ -6,6 +6,8 @@
 //! only the region's own 64x64 tiles are kept, so every kept tile has at least 16 tiles of
 //! context in every direction.
 
+mod actors;
+
 use crate::{
     AnimatedInstance, HeightDependencySnapshot, OwnedTiles, RegionInfo, RegionMap, SceneWindow,
     TerrainPresentation, WorldDefinitions, WorldError, build_world_scene,
@@ -17,6 +19,7 @@ use crate::{
 };
 use osrs_cache::source::CacheSource;
 use osrs_core::coords::RegionCoord;
+use osrs_core::provenance::TargetProvenance;
 use osrs_render::{HD_FLAG_TERRAIN, HD_MATERIAL_INDEX_MASK, SceneGeometry, gpu::TextureLayer};
 #[cfg(not(target_arch = "wasm32"))]
 use std::thread::JoinHandle;
@@ -31,7 +34,7 @@ use web_time::Instant;
 pub const REGION_WINDOW_MARGIN: i32 = 16;
 const REGION_TILES: u32 = 64;
 
-/// Which extraction path actually produced a region's geometry.
+/// Which extraction path actually produced scene geometry (a region or actor layer).
 ///
 /// `ReferenceFallback` is deliberately distinct from `Reference`: it means the caller requested
 /// HD geometry but no HD context was available, so the region would otherwise look like a valid
@@ -44,7 +47,7 @@ pub enum RegionRenderPath {
 }
 
 impl RegionRenderPath {
-    const fn select(hd_requested: bool, hd_available: bool) -> Self {
+    pub(crate) const fn select(hd_requested: bool, hd_available: bool) -> Self {
         match (hd_requested, hd_available) {
             (false, _) => Self::Reference,
             (true, true) => Self::Hd,
@@ -145,6 +148,10 @@ pub fn region_window(region: RegionCoord) -> SceneWindow {
 #[derive(Debug, Clone)]
 pub struct RegionGeometry {
     pub region: RegionCoord,
+    /// Exact cache/profile/decoder provenance of the immutable source used by this build.
+    pub target: Arc<TargetProvenance>,
+    /// Actual extraction inputs, including requested HD when the result is a Reference fallback.
+    pub presentation: TerrainPresentation,
     /// Decoded source-region state from before any scene/render extraction. The editor adapts this
     /// into its canonical semantic document; renderer and picker data remain disposable views.
     pub source: Arc<RegionMap>,
@@ -257,6 +264,8 @@ fn build_region_geometry_scoped_with(
     ));
     Ok(Some(RegionGeometry {
         region,
+        target: Arc::new(definitions.context().target_provenance().clone()),
+        presentation,
         source: Arc::new(source),
         geometry,
         height_dependencies,
@@ -428,15 +437,7 @@ impl StreamWorker {
             Request::VirtualMap(underlay) => self.definitions.use_virtual_map(underlay),
             Request::Shutdown => return false,
             Request::PlayerGeometry(frame) => {
-                let update = crate::npc::extract_player_frame(
-                    &mut self.definitions,
-                    &frame,
-                    if self.presentation.hd_geometry {
-                        self.hd.as_ref()
-                    } else {
-                        None
-                    },
-                );
+                let update = self.player_geometry(&frame);
                 let _ = events.send(StreamEvent::PlayerGeometry(update));
             }
             Request::Sound(id) => {
@@ -455,15 +456,7 @@ impl StreamWorker {
                 let _ = events.send(StreamEvent::NpcAssets(update));
             }
             Request::NpcGeometry(input) => {
-                let update = crate::npc::extract_npcs(
-                    &mut self.definitions,
-                    input,
-                    if self.presentation.hd_geometry {
-                        self.hd.as_ref()
-                    } else {
-                        None
-                    },
-                );
+                let update = self.npc_geometry(input);
                 let _ = events.send(StreamEvent::NpcGeometry(update));
             }
             Request::Outline {

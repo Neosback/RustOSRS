@@ -289,7 +289,19 @@ def features(info, kind):
     result += ['action:' + a.lower() for a in info.get('actions', [])]
     if info.get('category') is not None:
         result.append('category:' + str(info['category']))
+    models = info.get('models')
+    if models is not None:
+        result += ['model_representation:' + models['representation'],
+                   'model_entries:' + str(len(models['entries']))]
     return result
+
+
+def confirmed_role(labels, index, obj):
+    """Occurrence corrections override definition labels; inferred evidence is never a target."""
+    member = f'human:member:{index}:role'
+    definition = f"human:object:{obj['id']}:{obj['kind']}"
+    role = labels[member] if member in labels else labels.get(definition)
+    return role.strip().lower() if isinstance(role, str) and role.strip() else None
 
 
 def building_critic_features(record):
@@ -376,9 +388,8 @@ def fit(args):
         if not building.get('reviewed'):
             continue
         labels = building.get('labels', {})
-        for obj in prefab['objects']:
-            key = f"human:object:{obj['id']}:{obj['kind']}"
-            role = labels.get(key)
+        for index, obj in enumerate(prefab['objects']):
+            role = confirmed_role(labels, index, obj)
             info = objects.get(str(obj['id']))
             if role and info:
                 examples.append((group_for(prefab), role, features(info, obj['kind'])))

@@ -100,32 +100,7 @@ const UNDER_ROOF: u8 = 4;
 
 /// A room role as the kit files spell it.
 pub fn role_name(role: BuildingRoomRole) -> &'static str {
-    use BuildingRoomRole as R;
-    match role {
-        R::Living => "living",
-        R::Kitchen => "kitchen",
-        R::Bedroom => "bedroom",
-        R::Bathroom => "bathroom",
-        R::Utility => "utility",
-        R::SalesFloor => "sales_floor",
-        R::Storage => "storage",
-        R::Office => "office",
-        R::Workshop => "workshop",
-        R::CommonRoom => "common_room",
-        R::Bar => "bar",
-        R::GuestRoom => "guest_room",
-        R::Lobby => "lobby",
-        R::Vault => "vault",
-        R::Security => "security",
-        R::Nave => "nave",
-        R::Altar => "altar",
-        R::Vestry => "vestry",
-        R::Loading => "loading",
-        R::GreatHall => "great_hall",
-        R::Armory => "armory",
-        R::GuardRoom => "guard_room",
-        R::Cell => "cell",
-    }
+    role.label()
 }
 
 /// The object orientation for a piece on the `direction` side of a tile.
@@ -226,6 +201,19 @@ impl KitFinish {
         edges: &[SemanticEdge],
         snapshot: &GenerationSnapshot,
     ) -> MapPatch {
+        self.apply_to_floor(body, building, edges, snapshot, true)
+    }
+
+    /// [`Self::apply`] for one floor of a building. Only the ground floor grades the site: the
+    /// ground under an upper floor is the floor below, not terrain.
+    pub fn apply_to_floor(
+        &self,
+        body: &MapPatch,
+        building: &BspBuildingPlan,
+        edges: &[SemanticEdge],
+        snapshot: &GenerationSnapshot,
+        ground: bool,
+    ) -> MapPatch {
         let plan = &building.plan;
         let mut rng = Rng(plan.request.seed ^ 0x5bd1_e995_a3c2_f1d7);
         let role_name_of = |tile: MapTile| -> Option<&'static str> {
@@ -292,11 +280,23 @@ impl KitFinish {
                 _ => None,
             })
             .collect();
+        // The client has one wall-decoration slot per tile, shared by all wall faces.
+        // Optional finishing must not emit two distinct decorations that overwrite each other.
+        let mut decor_slots: HashSet<MapPosition> = placed
+            .iter()
+            .filter(|p| (4..=8).contains(&p.kind.get()))
+            .map(|p| p.position)
+            .collect();
         let mut add = |ops: &mut Vec<MapOp>, placement: Option<ObjectPlacement>| {
-            if let Some(placement) = placement
-                && placed.insert(placement)
-            {
-                ops.push(MapOp::AddObject { placement });
+            if let Some(placement) = placement {
+                if (4..=8).contains(&placement.kind.get())
+                    && !decor_slots.insert(placement.position)
+                {
+                    return;
+                }
+                if placed.insert(placement) {
+                    ops.push(MapOp::AddObject { placement });
+                }
             }
         };
 
@@ -384,7 +384,7 @@ impl KitFinish {
         for piece in furnish::furnish(self, building, &feature, snapshot, &mut rng) {
             add(&mut ops, Some(piece));
         }
-        if self.grade {
+        if self.grade && ground {
             ops.extend(grade::grade(building, snapshot));
         }
         MapPatch::new(ops)
@@ -393,35 +393,6 @@ impl KitFinish {
 
 #[cfg(test)]
 mod tests;
-
-/// Every room role the kit files may name, plus `hallway` and `default`.
-const ROLE_NAMES: &[&str] = &[
-    "hallway",
-    "default",
-    "living",
-    "kitchen",
-    "bedroom",
-    "bathroom",
-    "utility",
-    "sales_floor",
-    "storage",
-    "office",
-    "workshop",
-    "common_room",
-    "bar",
-    "guest_room",
-    "lobby",
-    "vault",
-    "security",
-    "nave",
-    "altar",
-    "vestry",
-    "loading",
-    "great_hall",
-    "armory",
-    "guard_room",
-    "cell",
-];
 
 impl KitFinish {
     /// Check the section: known role names, valid kinds, floors that make sense.
@@ -434,7 +405,9 @@ impl KitFinish {
 
         let bad = |what: &'static str, value: u32| crate::KitError::Value { what, value };
         for name in self.floors.keys().chain(self.furniture.keys()) {
-            if !ROLE_NAMES.contains(&name.as_str()) {
+            if !matches!(name.as_str(), "hallway" | "default")
+                && BuildingRoomRole::from_label(name).is_none_or(|role| role.label() != name)
+            {
                 return Err(crate::KitError::Roof(format!("unknown room role {name:?}")));
             }
         }

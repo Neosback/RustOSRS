@@ -64,6 +64,65 @@ impl GenerationSnapshot {
         self.request.site
     }
 
+    /// The snapshot for generating floor `floor` (0 is the base plane) of a building that stands on
+    /// `site`, a part of this snapshot's site: that plane's terrain, the site's occupancy, and the
+    /// base plane's heights (the corners are the same on every floor, and the planner only checks
+    /// that they exist). `None` when the plane does not exist or `site` is not inside this one.
+    pub(crate) fn for_floor(&self, floor: u8, site: RectSite) -> Option<Self> {
+        let plane = SourcePlane::new(self.request.base_plane.index().get().checked_add(floor)?)?;
+        let far = offset_tile(
+            site.origin(),
+            u32::from(site.width()),
+            u32::from(site.height()),
+        );
+        if !self.request.site.contains(site.origin())
+            || !self
+                .request
+                .site
+                .contains(MapTile::new(far.x - 1, far.y - 1))
+        {
+            return None;
+        }
+        let request = BuildingRequest {
+            site,
+            base_plane: plane,
+            floors: 1,
+            ..self.request
+        };
+        let mut terrain =
+            Vec::with_capacity(usize::from(site.width()) * usize::from(site.height()));
+        let mut occupancy = OccupancyGrid::new(site);
+        for local_y in 0..u32::from(site.height()) {
+            for local_x in 0..u32::from(site.width()) {
+                let tile = offset_tile(site.origin(), local_x, local_y);
+                terrain.push(if floor == 0 {
+                    self.terrain_at(tile)?
+                } else {
+                    self.terrain_at_plane(tile, plane)?
+                });
+                if self.occupancy.get(tile) == Some(OccupancyCell::Blocked) {
+                    occupancy.set(tile, OccupancyCell::Blocked);
+                }
+            }
+        }
+        let mut heights =
+            Vec::with_capacity((usize::from(site.width()) + 1) * (usize::from(site.height()) + 1));
+        for local_y in 0..=u32::from(site.height()) {
+            for local_x in 0..=u32::from(site.width()) {
+                let corner = offset_tile(site.origin(), local_x, local_y);
+                heights
+                    .push(self.height_at(HeightVertexCoord::new(corner, self.request.base_plane)));
+            }
+        }
+        Some(Self {
+            request,
+            terrain,
+            upper_terrain: Vec::new(),
+            heights,
+            occupancy,
+        })
+    }
+
     pub fn terrain_at(&self, tile: MapTile) -> Option<TerrainTile> {
         self.terrain_index(tile).map(|index| self.terrain[index])
     }

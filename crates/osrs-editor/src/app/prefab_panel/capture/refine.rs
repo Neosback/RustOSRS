@@ -28,6 +28,9 @@ pub(in crate::app) fn hover_placement(app: &EditorApp) -> Option<ObjectPlacement
 }
 
 pub(super) fn project(app: &mut EditorApp, review: &Review, additive: bool) {
+    if !review.is_current(app.session.revision(), app.project.generation()) {
+        return;
+    }
     if !additive {
         app.interaction.clear_selection();
     }
@@ -64,7 +67,7 @@ pub(super) fn project(app: &mut EditorApp, review: &Review, additive: bool) {
 }
 
 pub(in crate::app) fn cancel(app: &mut EditorApp) {
-    app.prefabs.capture_review = CaptureReview::default();
+    app.prefabs.capture_review.clear();
 }
 
 pub(in crate::app) fn open(app: &mut EditorApp) {
@@ -103,17 +106,26 @@ pub(in crate::app) fn keys(app: &mut EditorApp, ctx: &egui::Context) {
     }
 }
 
-pub(in crate::app) fn window(app: &mut EditorApp, ctx: &egui::Context) {
-    keys(app, ctx);
-    if !app.prefabs.capture_review.refining {
-        return;
-    }
-    if app.prefabs.capture_review.review.as_ref().is_some_and(|r| {
-        (r.source, r.revision) != (app.project.generation(), app.session.map_revision())
-    }) {
+pub(super) fn retire_stale(app: &mut EditorApp) -> bool {
+    if !app
+        .prefabs
+        .capture_review
+        .is_current(app.session.revision(), app.project.generation())
+    {
         cancel(app);
         app.ui
             .notify("The map changed. Select the building again before capture.");
+        return true;
+    }
+    false
+}
+
+pub(in crate::app) fn window(app: &mut EditorApp, ctx: &egui::Context) {
+    if retire_stale(app) {
+        return;
+    }
+    keys(app, ctx);
+    if !app.prefabs.capture_review.refining {
         return;
     }
     egui::Window::new("Building selection")
@@ -134,6 +146,9 @@ pub(in crate::app) fn window(app: &mut EditorApp, ctx: &egui::Context) {
 }
 
 pub(super) fn controls(app: &mut EditorApp, ui: &mut egui::Ui) {
+    if retire_stale(app) {
+        return;
+    }
     let state = &mut app.prefabs.capture_review;
     ui.label("Shift adds · Alt removes · [ / ] shrink / grow floor");
     ui.horizontal_wrapped(|ui| {
@@ -187,6 +202,9 @@ pub(super) fn controls(app: &mut EditorApp, ui: &mut egui::Ui) {
 
 /// Correct membership before the ordinary Select controller consumes the gesture.
 pub(in crate::app) fn input(app: &mut EditorApp, response: &egui::Response) -> bool {
+    if retire_stale(app) {
+        return false;
+    }
     if !app.prefabs.capture_review.refining {
         return false;
     }
@@ -306,6 +324,9 @@ pub(super) fn change_piece(
 }
 
 fn resize(app: &mut EditorApp, grow: bool) {
+    if retire_stale(app) {
+        return;
+    }
     let plane = app.interaction.view_plane();
     let Some(review) = &mut app.prefabs.capture_review.review else {
         return;

@@ -36,6 +36,7 @@ impl EditFootprint {
         self
     }
 
+    #[cfg(test)]
     pub(in crate::app) fn new(
         terrain_tiles: impl IntoIterator<Item = MapTile>,
         height_vertices: impl IntoIterator<Item = HeightVertexCoord>,

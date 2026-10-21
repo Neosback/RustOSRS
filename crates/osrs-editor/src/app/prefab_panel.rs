@@ -5,6 +5,9 @@
 //! plans a patch against the authoritative document and commits it through the edit gateway.
 
 mod build;
+#[cfg(not(target_arch = "wasm32"))]
+pub(in crate::app) use build::{export_rejected_reproduction, export_reproduction};
+mod assemblies;
 pub(in crate::app) mod capture;
 mod library;
 pub(in crate::app) mod placement_review;
@@ -31,6 +34,16 @@ pub(in crate::app) fn builder(app: &mut EditorApp, ui: &mut egui::Ui) {
 pub(super) fn update(app: &mut EditorApp) {
     viewport::poll(app);
     capture::poll(app);
+    #[cfg(not(target_arch = "wasm32"))]
+    if let Some(result) = app.prefabs.build.poll_reproduction() {
+        match result {
+            Ok(path) => app
+                .ui
+                .notify(format!("Saved building reproduction: {path}")),
+            Err(error) => app.ui.notify(error),
+        }
+    }
+
     let showing = app.settings.prefs.properties_panel
         && app.settings.prefs.rail_tab == crate::settings::RailTab::Prefabs
         && app.prefabs.page == Page::Build;

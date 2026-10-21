@@ -30,6 +30,15 @@ pub(super) struct SmokeSnapshot {
     pub region: (i32, i32),
 }
 
+/// Borrowed observation of installed artifacts; diagnostics never decide acceptance.
+pub(super) struct ProjectionInspection<'a> {
+    pub static_zone: Option<&'a super::world_runtime::RegionArtifactIdentity>,
+    pub picker: Option<&'a super::world_runtime::RegionArtifactIdentity>,
+    pub animation: Option<&'a super::world_runtime::AnimationArtifactIdentity>,
+    pub npcs: Option<&'a super::npc_runtime::NpcArtifactIdentity>,
+    pub player: Option<&'a super::player_runtime::PlayerArtifactIdentity>,
+}
+
 impl DiagnosticsRuntime {
     pub(super) fn new(authoring: bool) -> Self {
         let enabled = std::env::var("RUSTOSRS_TRACE_EDITS")
@@ -208,11 +217,59 @@ impl DiagnosticsRuntime {
             self.stats.memory_text(vertex_bytes)
         );
     }
-    pub(super) fn tile_inspector(&self, ui: &mut egui::Ui, tile: (i32, i32), plane: u8) {
+    pub(super) fn tile_inspector(
+        &self,
+        ui: &mut egui::Ui,
+        tile: (i32, i32),
+        plane: u8,
+        artifacts: ProjectionInspection<'_>,
+    ) {
         if !self.trace.is_enabled() {
             return;
         }
         egui::CollapsingHeader::new("Edit and rebuild trace").show(ui, |ui| {
+            for (label, identity) in [
+                ("Static zone", artifacts.static_zone),
+                ("Picker", artifacts.picker),
+            ] {
+                ui.strong(format!("{label}: last accepted projection"));
+                if let Some(identity) = identity {
+                    for line in identity.describe() {
+                        ui.add(egui::Label::new(egui::RichText::new(line).small()).wrap());
+                    }
+                } else {
+                    ui.weak("No artifact retained here.");
+                }
+            }
+            ui.strong("Animated locs: last accepted projection");
+            if let Some(identity) = artifacts.animation {
+                for line in identity.describe(MapTile::new(tile.0, tile.1)) {
+                    ui.add(egui::Label::new(egui::RichText::new(line).small()).wrap());
+                }
+            } else {
+                ui.weak("No animated artifact retained.");
+            }
+            for (label, lines) in [
+                (
+                    "NPCs",
+                    artifacts
+                        .npcs
+                        .map(|identity| identity.describe(MapTile::new(tile.0, tile.1))),
+                ),
+                (
+                    "Player",
+                    artifacts.player.map(|identity| identity.describe()),
+                ),
+            ] {
+                ui.strong(format!("{label}: last accepted projection"));
+                if let Some(lines) = lines {
+                    for line in lines {
+                        ui.add(egui::Label::new(egui::RichText::new(line).small()).wrap());
+                    }
+                } else {
+                    ui.weak("No actor artifact retained.");
+                }
+            }
             let lines = self.trace.explain(MapTile::new(tile.0, tile.1), plane);
             if lines.is_empty() {
                 ui.weak("No matching events retained in this session.");

@@ -10,6 +10,7 @@ mod routing;
 use super::EditorApp;
 use crate::app::edit_runtime::EditReplayDirection;
 use eframe::egui;
+#[cfg(not(target_arch = "wasm32"))]
 use osrs_world::LocEdit;
 
 impl EditorApp {
@@ -25,6 +26,7 @@ impl EditorApp {
             .is_some()
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub(in crate::app) fn send_loc_edits(&mut self, edits: Vec<LocEdit>) {
         self.world.project_loc_edits(edits);
     }

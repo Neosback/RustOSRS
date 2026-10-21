@@ -10,7 +10,8 @@ const EXTERIOR_WALL_INSET: u16 = 1;
 const DEFAULT_MIN_ROOM_SPAN: u16 = 2;
 const DEFAULT_CORRIDOR_WIDTH: u16 = 1;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum BuildingArchetype {
     House,
     Shop,
@@ -22,7 +23,8 @@ pub enum BuildingArchetype {
     Dungeon,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum BuildingStyle {
     Generic,
     Lumbridge,
